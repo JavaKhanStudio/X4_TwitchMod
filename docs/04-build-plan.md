@@ -1,0 +1,72 @@
+# 04 — Build Plan & Open Decisions
+
+A staged plan that de-risks the hard parts first. Each milestone is independently testable.
+
+## Guiding principle
+**Prove the pipe before building the features.** The riskiest, least-documented part is
+getting a socket open between native-Linux X4 and an external process via LuaSocket. Spike
+that with a "hello world" *before* writing any Twitch or gameplay logic.
+
+## Milestone 0 — Environment & facts to confirm
+- [x] **Runtime decided: native-Linux X4 → Path B (LuaSocket).** X4 is owned on Steam but
+      **not yet downloaded** (2026-06-08). Steam on Linux installs the native build by
+      default — verify it's NOT forced to Proton in the game's Compatibility settings.
+- [ ] After download: locate the X4 install + `~/.config/EgoSoft/X4/` savegame dir.
+- [ ] Confirm X4 patch version (7.x?) → pick matching Mod Support APIs (CE fork for patch 7).
+- [ ] Get a **LuaSocket built for Lua 5.1** working on Fedora (build `.so` if no package).
+
+## Milestone 1 — "Hello socket" spike (THE de-risk)
+Goal: text typed in an external process appears in X4, and vice-versa. **No Twitch yet.**
+- [ ] Install LuaSocket-enabled `sn_mod_support_apis` (bekopharm `linux-compat`) OR vendor
+      a minimal loader.
+- [ ] Disable Protected UI Mode.
+- [ ] Tiny X4 extension: Lua opens a localhost TCP listener (non-blocking), reads lines,
+      and `raise_lua_event`s them to an MD cue that prints to the in-game event log /
+      a debug `<show_help>`/log file.
+- [ ] External `nc`/python client connects and sends a line → see it in game.
+- [ ] X4 sends a line back on a keypress/timer → see it in the client.
+- **Exit criteria:** reliable bidirectional line exchange, no frame stalls.
+
+## Milestone 2 — The Bridge ⇄ X4 line protocol
+- [ ] Implement the Bridge skeleton (Python `twitchAPI` likely) with a **fake Twitch
+      source** (stdin or a test harness) so we can develop the protocol without live Twitch.
+- [ ] Lock the wire format (`00-overview` §5). Implement robust line framing + a `ready`
+      handshake + reconnect on both sides.
+- [ ] X4 MD: a clean dispatcher cue that switches on `t` and routes to handlers.
+
+## Milestone 3 — Twitch read path (chat → game)
+- [ ] Bridge: Twitch Developer app, OAuth (user token + refresh + hourly validate).
+- [ ] Bridge: EventSub WS, subscribe `channel.chat.message`; normalize → protocol lines.
+- [ ] X4: first real effect — e.g. `!ping` in chat → in-game notification naming the user.
+- [ ] Add permission/cooldown policy (Bridge-side) and one gameplay command, e.g.
+      `!spawn fighter` → MD spawns a ship near the player.
+
+## Milestone 4 — Richer Twitch events
+- [ ] Channel-point redemptions → in-game events (`channel_points_custom_reward_redemption.add`).
+- [ ] Subs / bits / raids → scaled events (reinforcements, pirate attacks, economy shifts).
+- [ ] A config menu in-game via **Simple Menu API** (toggle features, set channel, cooldowns).
+
+## Milestone 5 — Game → Twitch feedback
+- [ ] X4 emits events (player died, big kill, station built) → `{"t":"say",...}` → Bridge
+      → `POST /helix/chat/messages`.
+
+## Milestone 6 — Packaging & docs
+- [ ] Startup story: one script to launch the Bridge; X4 auto-connects on load.
+- [ ] README for install (deps, Protected UI off, tokens), and a `content.xml` ready for
+      Nexus/Workshop if we ever publish.
+- [ ] Decide distribution: depend on bekopharm fork vs. vendor LuaSocket loader.
+
+## Open decisions (resolve as we go)
+| # | Decision | Notes |
+|---|----------|-------|
+| D1 | Native-Linux X4 vs Proton | ✅ **RESOLVED: native-Linux (Path B / LuaSocket).** |
+| D2 | Transport: localhost TCP vs Unix socket | TCP = portable; Unix = bekopharm's proven path. |
+| D3 | Bridge language: Python vs Node | ✅ **RESOLVED: Python + `twitchAPI`** (ecosystem fit, EventSub+Helix+OAuth built in). |
+| D4 | Transport native lib: (a) depend on bekopharm LuaSocket fork, (b) vendor LuaSocket, (c) write our own tiny C shim `.so` (FFI) | Default LuaSocket; C-shim is the fallback if Lua-5.1 LuaSocket on Fedora is painful. See `05-native-cpp-and-ffi-option.md`. |
+| D5 | Wire format: JSON lines vs `|`-delimited | JSON nicer; `|` cheaper/robuster in Lua. Start JSON, fall back if needed. |
+| D6 | Where command policy lives | Likely Bridge = perms/cooldowns, X4 = effects. |
+| D7 | Token storage | Bridge-owned local file; never inside the X4 extension. |
+
+## What to build first, concretely
+When we resume coding: **Milestone 0 → Milestone 1 spike.** Don't touch Twitch until the
+socket round-trips. The spike is ~1 small Lua file + ~1 MD file + ~20 lines of client.
