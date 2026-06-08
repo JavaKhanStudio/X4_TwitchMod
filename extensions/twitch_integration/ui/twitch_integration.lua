@@ -10,9 +10,10 @@
     MD raises  'Twitch.Decode'  with the raw line  ->  onDecode() parses it  ->
     signal_md(<type>, <rawline>)  ->  MD cue 'Twitch_On<Type>' fires.
 
-  [VERIFY on first run] the exact X4 signal-to-MD call. Different X4 versions
-  expose this differently (AddUITriggeredEvent argument count/shape). It is
-  isolated in signal_md() below so there is exactly one place to fix.
+  Signal-to-MD call VERIFIED against sn_mod_support_apis (ui/named_pipes/library.lua):
+    AddUITriggeredEvent(screen, control, return_value)
+  and MD reads return_value as event.param3 (verified in simple_menu_api.xml).
+  Still isolated in signal_md() below in case a future X4 version changes it.
 ]]--
 
 local Lib = {}
@@ -119,7 +120,9 @@ Lib.json_decode = json_decode
 -- <event_ui_triggered screen="'Twitch_Integration'" control="<type>"/> and reads
 -- the raw JSON line from the event param.
 local function signal_md(msgtype, rawline)
-  -- [VERIFY] argument shape for this X4 version.
+  -- VERIFIED 3-arg form: AddUITriggeredEvent(screen, control, value); MD reads
+  -- `value` as event.param3. (cf. sn_mod_support_apis named_pipes/library.lua
+  -- L.Raise_Signal -> AddUITriggeredEvent("Named_Pipes", name, return_value).)
   if AddUITriggeredEvent then
     AddUITriggeredEvent("Twitch_Integration", msgtype, rawline)
   else
@@ -136,7 +139,11 @@ local function onDecode(_, line)
     DebugError("[Twitch] bad line: " .. tostring(err or line))
     return
   end
-  signal_md(tostring(msg.t), line)
+  -- Vetted commands carry an action id; emit that as the MD `control` so MD can
+  -- have one cue per action (Twitch_On<Action>). Other messages emit by type.
+  local control = msg.t
+  if msg.t == "cmd" and msg.id then control = tostring(msg.id) end
+  signal_md(control, line)
 end
 
 -- ---- init ------------------------------------------------------------------

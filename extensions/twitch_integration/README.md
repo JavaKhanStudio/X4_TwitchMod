@@ -31,11 +31,16 @@ MD owns transport + effects; Lua does only JSON. See `../../docs/06-ecosystem-su
 4. Set the Named Pipes API **"Pipe Prefix Linux"** option to the savegame path so pipe
    `twitch` maps to `~/.config/EgoSoft/X4/save/twitch...`. Point the bridge `--socket` there.
 
-## Status / `[VERIFY]` markers (confirm on first run with the game)
+## Status
+**Verified against `sn_mod_support_apis` source** (so these should work first-try):
+- `Named_Pipes.Read` continuous + `Named_Pipes.Write` param-table syntax; callback `event.param`.
+- `AddUITriggeredEvent(screen, control, value)` (3-arg); MD reads `value` as `event.param3`.
+- The `'reloaded'` Lua→MD load handshake pattern.
+
+Still `[VERIFY]` live (need the running game):
 - Exact `content.xml` / `ui.xml` attribute schemas.
-- `Named_Pipes.Read` continuous-mode param keys and `Named_Pipes.Write` keys.
-- The `AddUITriggeredEvent(...)` argument shape and which `event.paramN` carries the payload
-  (isolated in `signal_md()` in the Lua, and `event.param3` in the MD cues).
+- Linux pipe-name → socket-file mapping via the fork's "Pipe Prefix Linux" option.
+- Whether to pass structured fields as an MD table via `param3` vs. the raw JSON string.
 - `<debug_text>` is the placeholder effect; replace the `TODO`s with real gameplay.
 
 The Lua `json_decode` is unit-tested against the bridge's real output (see

@@ -19,8 +19,9 @@ from .base import Source
 log = logging.getLogger("source.stdin")
 
 HELP = """\
-fake-twitch commands (-> sent to X4 as protocol messages):
-  chat <user> <message...>        a chat message
+fake-twitch commands (-> run through the command engine, like real events):
+  chat <user> <message...>        a chat message (no badges)
+  chatas <role> <user> <msg...>   chat with a badge (role: subscriber|vip|moderator|broadcaster)
   redeem <user> <reward...>       channel-points redemption
   sub <user> [tier] [months]      subscription
   cheer <user> <bits>             bits
@@ -52,6 +53,8 @@ def _parse(line: str) -> dict | None:
             return None
         if cmd == "chat":
             return protocol.chat(args[0], " ".join(args[1:]))
+        if cmd == "chatas":  # chatas <role> <user> <msg...>
+            return protocol.chat(args[1], " ".join(args[2:]), badges=[args[0]])
         if cmd == "redeem":
             return protocol.redeem(args[0], " ".join(args[1:]))
         if cmd == "sub":

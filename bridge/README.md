@@ -53,9 +53,16 @@ First run opens a browser for OAuth; tokens are stored under
 `~/.config/x4-twitch-bridge/` and auto-refreshed thereafter. Create the app at
 https://dev.twitch.tv/console (OAuth redirect `http://localhost:17563`).
 
+## Commands
+The command engine (`commands.py`) turns Twitch events into vetted `cmd` messages,
+applying permissions + cooldowns. Edit **`catalog.py`** to change what viewers can do
+(chat prefixes like `!spawn`, channel-point rewards, raid/sub/cheer reactions). Each
+`action` needs a matching cue in the X4 mod's MD script.
+
 ## Tests
 ```bash
-bash tools/smoke_test.sh        # end-to-end plumbing (stdlib only)
+python tools/test_commands.py   # command engine: perms, cooldowns, args (stdlib)
+bash tools/smoke_test.sh        # end-to-end plumbing through the engine (stdlib)
 python tools/test_twitch_api.py # twitchAPI names/signatures (needs twitchAPI)
-python tools/test_lua_decode.py # X4 Lua JSON decoder (needs lupa)
+python tools/test_lua_decode.py # X4 Lua JSON decode + cmd dispatch (needs lupa)
 ```

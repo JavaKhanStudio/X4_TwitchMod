@@ -26,6 +26,9 @@ RAID = "raid"
 FOLLOW = "follow"
 READY = "ready"        # handshake: bridge is connected and Twitch is live
 
+# bridge -> X4 (vetted command, emitted by the command engine)
+COMMAND = "cmd"        # a permission/cooldown-checked game action
+
 # X4 -> bridge (actions the game asks us to perform)
 SAY = "say"            # post a message to chat (Helix)
 ACTION = "action"      # generic future action (ban, shoutout, ...)
@@ -78,3 +81,8 @@ def follow(user: str) -> dict[str, Any]:
 
 def ready() -> dict[str, Any]:
     return {"t": READY}
+
+
+def command(action: str, by: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    """A vetted game action (post-policy). `action` is the id X4 dispatches on."""
+    return {"t": COMMAND, "id": action, "by": by, "args": args or {}}

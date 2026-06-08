@@ -47,8 +47,14 @@ Goal: text typed in an external process appears in X4, and vice-versa. **No Twit
 - [ ] LIVE: create a Twitch dev app, set `TWITCH_CLIENT_ID/SECRET/CHANNEL`, run
       `--source twitch`, do the one-time OAuth, confirm events flow. (Needs creds.)
 - [ ] X4: first real effect — e.g. `!ping` in chat → in-game notification naming the user.
-- [ ] Add permission/cooldown policy (Bridge-side) and one gameplay command, e.g.
-      `!spawn fighter` → MD spawns a ship near the player.
+- [x] **Permission/cooldown policy engine** built Bridge-side (`commands.py` + editable
+      `catalog.py`): roles from chat badges, global + per-user cooldowns, chat-prefix and
+      event triggers, arg parsing → emits vetted `cmd` messages. Unit-tested
+      (`tools/test_commands.py`); X4 dispatch (`cmd`→action-id cue) tested via lupa.
+- [ ] LIVE: one real gameplay command — `!spawn fighter` → MD actually spawns a ship.
+- [x] **X4-side integration de-risked**: Named Pipes Read/Write syntax, `event.param3`,
+      and `AddUITriggeredEvent(screen,control,value)` all verified against real source;
+      `[VERIFY]` markers downgraded accordingly.
 
 ## Milestone 4 — Richer Twitch events
 - [ ] Channel-point redemptions → in-game events (`channel_points_custom_reward_redemption.add`).

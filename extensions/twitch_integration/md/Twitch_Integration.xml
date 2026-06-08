@@ -12,10 +12,16 @@
   so this same MD code works on Linux. The pipe NAME here ("twitch") maps to the
   socket file via the API's "Pipe Prefix Linux" option.
 
-  [VERIFY on first run] the exact Named_Pipes.Read/Write param table keys and the
-  event_ui_triggered param indices against sn_mod_support_apis Named_Pipes_API.md.
-  This is scaffolding: effects below are debug log lines; real gameplay effects
-  (spawn ships, launch missions, modifiers) replace the TODO markers.
+  VERIFIED against sn_mod_support_apis source:
+    * md.Named_Pipes.Read  param="table[$pipe=.., $cue=.., $continuous=true]";
+      callback reads the line from event.param ('ERROR'/'CANCELLED'/'TIMEOUT' sentinels).
+    * md.Named_Pipes.Write param="table[$pipe=.., $msg=.., $cue=..]"; callback event.param
+      is 'SUCCESS'/'ERROR'. No explicit open needed (connects on first access).
+    * Lua-emitted typed events arrive with the payload in event.param3.
+  STILL [VERIFY] live: (a) Linux pipe-name -> socket-file mapping via the fork's
+  "Pipe Prefix Linux" option; (b) whether to pass structured fields as an MD table
+  via param3 instead of the raw JSON string (see Twitch_OnChat).
+  Effects below are debug log lines; real gameplay replaces the TODO markers.
 -->
 <mdscript name="Twitch_Integration" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <cues>
@@ -71,51 +77,71 @@
       </actions>
     </cue>
 
-    <!-- ===== inbound typed events (emitted by Lua after JSON decode) ======== -->
-    <!-- Lua calls AddUITriggeredEvent('Twitch_Integration', <type>, <rawjson>). -->
+    <!-- ===== inbound VETTED COMMANDS (one cue per catalog action id) ========
+         The bridge applies permissions/cooldowns and sends {"t":"cmd","id":<action>,
+         "by":<user>,"args":{...}}. Lua emits <action> as the `control`, so each
+         action gets its own cue. event.param3 holds the raw JSON line.
+         Add a cue here whenever you add a Command to bridge/twitch_bridge/catalog.py.
+         Effects are debug_text placeholders — replace the TODOs with real gameplay. -->
 
-    <cue name="Twitch_OnChat" instantiate="true">
+    <cue name="Twitch_OnPing" instantiate="true">
       <conditions>
-        <event_ui_triggered screen="'Twitch_Integration'" control="'chat'"/>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'ping'"/>
       </conditions>
       <actions>
-        <set_value name="$payload" exact="event.param3"/>
-        <debug_text text="'[Twitch] chat: %s'.[$payload]" filter="general"/>
-        <!-- TODO: parse a !command and produce a game effect (spawn, vote, ...) -->
+        <debug_text text="'[Twitch] ping: %s'.[event.param3]" filter="general"/>
+        <signal_cue_instantly cue="Twitch_Say" param="'pong'"/>
       </actions>
     </cue>
 
-    <cue name="Twitch_OnRedeem" instantiate="true">
+    <cue name="Twitch_OnSpawn" instantiate="true">
       <conditions>
-        <event_ui_triggered screen="'Twitch_Integration'" control="'redeem'"/>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'spawn'"/>
       </conditions>
       <actions>
-        <set_value name="$payload" exact="event.param3"/>
-        <debug_text text="'[Twitch] redeem: %s'.[$payload]" filter="general"/>
-        <!-- TODO: map reward -> in-game event -->
+        <debug_text text="'[Twitch] spawn: %s'.[event.param3]" filter="general"/>
+        <!-- TODO: spawn a ship near the player; args.$ship holds the requested type -->
       </actions>
     </cue>
 
-    <cue name="Twitch_OnRaid" instantiate="true">
+    <cue name="Twitch_OnPirateAttack" instantiate="true">
       <conditions>
-        <event_ui_triggered screen="'Twitch_Integration'" control="'raid'"/>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'pirate_attack'"/>
       </conditions>
       <actions>
-        <set_value name="$payload" exact="event.param3"/>
-        <debug_text text="'[Twitch] raid: %s'.[$payload]" filter="general"/>
-        <!-- TODO: big in-game event scaled by viewer count -->
-        <!-- example of the outbound path: thank the raider in chat -->
+        <debug_text text="'[Twitch] pirate_attack: %s'.[event.param3]" filter="general"/>
+        <!-- TODO: spawn a hostile pirate squad -->
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnReinforcements" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'reinforcements'"/>
+      </conditions>
+      <actions>
+        <debug_text text="'[Twitch] reinforcements: %s'.[event.param3]" filter="general"/>
+        <!-- TODO: friendly reinforcements scaled by args.$viewers -->
         <signal_cue_instantly cue="Twitch_Say" param="'Thanks for the raid!'"/>
       </actions>
     </cue>
 
-    <cue name="Twitch_OnSub" instantiate="true">
+    <cue name="Twitch_OnSubReward" instantiate="true">
       <conditions>
-        <event_ui_triggered screen="'Twitch_Integration'" control="'sub'"/>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'sub_reward'"/>
       </conditions>
       <actions>
-        <set_value name="$payload" exact="event.param3"/>
-        <debug_text text="'[Twitch] sub: %s'.[$payload]" filter="general"/>
+        <debug_text text="'[Twitch] sub_reward: %s'.[event.param3]" filter="general"/>
+        <!-- TODO: grant a perk to the player -->
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnCheerBoost" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'cheer_boost'"/>
+      </conditions>
+      <actions>
+        <debug_text text="'[Twitch] cheer_boost: %s'.[event.param3]" filter="general"/>
+        <!-- TODO: temporary boost scaled by args.$bits -->
       </actions>
     </cue>
 

@@ -19,8 +19,10 @@ MOCK_PID=$!
 
 sleep 0.6   # let the socket come up
 
-# bridge: connect and emit two Twitch events, then stay alive to receive the 'say'.
-( sleep 0.6; echo "chat alice !spawn fighter"; echo "raid bob 250"; sleep 3.0 ) | \
+# bridge: connect and emit events through the command engine, then stay alive
+# to receive the 'say'. !ping (everyone) and a mod !spawn pass; raid -> reinforce.
+( sleep 0.6; echo "chat alice !ping"; echo "chatas moderator mod !spawn fighter";
+  echo "raid bob 250"; sleep 3.0 ) | \
   "$PY" -m twitch_bridge --socket "$SOCK" >"$BRIDGE_OUT" 2>&1 &
 BRIDGE_PID=$!
 
@@ -35,9 +37,10 @@ check() { # <file> <pattern> <label>
 # ':' and ','), whereas the wire format is compact. Assert against the printed form.
 echo "--- assertions ---"
 check "$BRIDGE_OUT" "connected to X4"            "bridge connected to the socket"
-check "$MOCK_OUT"   '"t": "chat"'                "chat event reached X4 (bridge -> X4)"
-check "$MOCK_OUT"   '"user": "alice"'            "chat carried the username"
-check "$MOCK_OUT"   '"t": "raid"'                "raid event reached X4"
+check "$MOCK_OUT"   '"id": "ping"'               "!ping -> vetted cmd reached X4"
+check "$MOCK_OUT"   '"id": "spawn"'              "mod !spawn passed permission check"
+check "$MOCK_OUT"   '"ship": "fighter"'          "spawn carried parsed arg"
+check "$MOCK_OUT"   '"id": "reinforcements"'     "raid -> reinforcements cmd"
 check "$BRIDGE_OUT" "would post to chat"         "X4 'say' reached the bridge (X4 -> bridge)"
 check "$BRIDGE_OUT" "hello-from-x4"              "X4 'say' payload delivered"
 

@@ -22,9 +22,14 @@ except ImportError:
     sys.exit(0)
 
 lua = LuaRuntime(unpack_returned_tuples=True)
+# Capture the registered MD-event handler and any signals the module emits.
 lua.execute("""
-  function RegisterEvent(name, fn) end
-  function AddUITriggeredEvent(a, b, c) end
+  _G._reg = {}
+  _G._signals = {}
+  function RegisterEvent(name, fn) _reg[name] = fn end
+  function AddUITriggeredEvent(screen, control, value)
+    table.insert(_signals, {screen, control, value})
+  end
   function DebugError(s) end
 """)
 Lib = lua.execute(open(LUA).read())
@@ -52,6 +57,24 @@ for msg in cases:
 val, _ = decode('{"t":"chat", broken')
 print(f"{'PASS' if val is None else 'FAIL'}: malformed input handled")
 fail += 0 if val is None else 1
+
+# Dispatch logic: onDecode must emit the action id as the MD `control` for cmd
+# messages, and the type for others.
+g = lua.globals()
+on_decode = g._reg["Twitch.Decode"]
+def last_control(line):
+    lua.execute("_G._signals = {}")
+    on_decode(None, line)
+    sigs = g._signals
+    return sigs[len(sigs)][2] if len(sigs) >= 1 else None  # lua 1-indexed
+
+c = last_control('{"t":"cmd","id":"ping","by":"alice","args":{}}')
+print(f"{'PASS' if c == 'ping' else 'FAIL'}: cmd dispatched by action id (got {c!r})")
+fail += 0 if c == "ping" else 1
+
+c = last_control('{"t":"ready"}')
+print(f"{'PASS' if c == 'ready' else 'FAIL'}: non-cmd dispatched by type (got {c!r})")
+fail += 0 if c == "ready" else 1
 
 print(f"\n{'ALL PASS' if fail == 0 else str(fail) + ' FAILURES'}")
 sys.exit(1 if fail else 0)

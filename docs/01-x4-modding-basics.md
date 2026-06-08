@@ -86,8 +86,10 @@ Minimal MD skeleton:
 ### MD ⇄ Lua bridge (the key mechanism)
 - **MD → Lua**: `<raise_lua_event name="'SomeName'" param="'payload'"/>`. The Lua side
   registers with `RegisterEvent("SomeName", handlerFn)`.
-- **Lua → MD**: Lua calls `SignalToMD` / the engine `AddUITriggeredEvent(...)`, and MD
-  catches it with a cue whose condition is `<event_ui_triggered screen="..." control="..."/>`.
+- **Lua → MD**: **VERIFIED** (from `sn_mod_support_apis` `named_pipes/library.lua` +
+  `simple_menu_api.xml`): `AddUITriggeredEvent(screen, control, value)` — a 3-arg call.
+  MD catches it with `<event_ui_triggered screen="'Screen'" control="'Control'"/>` and reads
+  `value` as **`event.param3`**. (`screen`/`control` are arbitrary identifiers you choose.)
 
 This MD↔Lua loop is exactly how the Mod Support APIs (and our socket layer) move data.
 Twitch event arrives on socket → Lua reads it → Lua raises a UI-triggered event → MD cue
