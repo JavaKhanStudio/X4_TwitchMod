@@ -35,6 +35,7 @@ its documented **Named Pipes API**; the Python bridge connects in as a client.
 | [`docs/04-build-plan.md`](docs/04-build-plan.md) | Staged milestones + open decisions. |
 | [`docs/05-native-cpp-and-ffi-option.md`](docs/05-native-cpp-and-ffi-option.md) | The C++/native (LuaJIT FFI) route — and why we don't need it. |
 | [`docs/06-ecosystem-survey.md`](docs/06-ecosystem-survey.md) | **Verified survey of the modding ecosystem + the resolved architecture. Start here for the "what exists" picture.** |
+| [`docs/07-live-bringup-checklist.md`](docs/07-live-bringup-checklist.md) | **Tickable install + first-run steps** — Twitch half, X4 half, joining them. |
 | [`docs/references.md`](docs/references.md) | Every source URL. |
 
 ## Next step
