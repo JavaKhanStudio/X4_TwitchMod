@@ -1,0 +1,3 @@
+# The bridge skeleton + mock_x4 run on the Python standard library alone.
+# The REAL Twitch source (twitch_bridge/sources/twitch.py, Milestone 3) needs:
+# twitchAPI>=4    # EventSub WebSocket + Helix + OAuth (PyTwitchAPI)

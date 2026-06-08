@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Registers our Lua into X4's menu environment. The old Lua_Loader.Load MD-event
+  method no longer works on current patches; the ui.xml <addon> mechanism does.
+  [VERIFY] schema against a current example (e.g. kuertee/x4-mod-ui-extensions) on install.
+-->
+<addon name="twitch_integration" id="twitch_integration">
+  <environment type="menus">
+    <file name="twitch_integration"/>   <!-- loads ui/twitch_integration.lua -->
+  </environment>
+  <dependency id="sn_mod_support_apis"/>
+</addon>

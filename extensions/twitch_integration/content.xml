@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Twitch Integration — X4 extension manifest.
+  Depends on the Mod Support APIs. On native Linux use the bekopharm linux-compat
+  fork (it keeps the same extension id 'sn_mod_support_apis'). Pin SN API >= 1.93.
+  [VERIFY] exact content.xml attribute schema against the X Community Wiki on install.
+-->
+<content id="twitch_integration"
+         name="Twitch Integration"
+         description="Two-way Twitch chat/events integration for X4 (built from scratch)."
+         author="Simon"
+         version="1"
+         date="2026-06-08"
+         save="0">
+  <dependency id="sn_mod_support_apis" optional="false"/>
+  <!-- <text language="44" name="Twitch Integration" description="..."/> -->
+</content>

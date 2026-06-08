@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Twitch Integration — Mission Director script (game-logic layer).
+
+  Responsibilities:
+    * lifecycle: open the pipe and start a continuous read on game load
+    * inbound:  raw line from pipe -> Lua (JSON decode) -> typed UI event -> MD cue -> effect
+    * outbound: build a small JSON line and Named_Pipes.Write it back to the bridge
+
+  Transport is the Mod Support APIs "Named Pipes API". On native Linux the bekopharm
+  linux-compat fork backs that API with a Unix-domain socket in the savegame folder,
+  so this same MD code works on Linux. The pipe NAME here ("twitch") maps to the
+  socket file via the API's "Pipe Prefix Linux" option.
+
+  [VERIFY on first run] the exact Named_Pipes.Read/Write param table keys and the
+  event_ui_triggered param indices against sn_mod_support_apis Named_Pipes_API.md.
+  This is scaffolding: effects below are debug log lines; real gameplay effects
+  (spawn ships, launch missions, modifiers) replace the TODO markers.
+-->
+<mdscript name="Twitch_Integration" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+
+    <!-- ===== lifecycle ===================================================== -->
+    <cue name="Twitch_Reset" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'reloaded'"/>
+      </conditions>
+      <actions>
+        <set_value name="$pipe" exact="'twitch'"/>
+        <debug_text text="'[Twitch] lua reloaded; starting pipe read'" filter="general"/>
+        <signal_cue_instantly cue="Twitch_StartReading"/>
+      </actions>
+    </cue>
+
+    <cue name="Twitch_Init" instantiate="true">
+      <conditions>
+        <event_game_started/>
+      </conditions>
+      <actions>
+        <signal_cue_instantly cue="Twitch_StartReading"/>
+      </actions>
+    </cue>
+
+    <!-- Start a continuous read on the pipe; each line invokes Twitch_OnPipeData. -->
+    <cue name="Twitch_StartReading" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <actions>
+        <!-- [VERIFY] continuous-read invocation per Named_Pipes_API.md -->
+        <signal_cue_instantly cue="md.Named_Pipes.Read"
+          param="table[$pipe='twitch', $cue=Twitch_OnPipeData, $continuous=true]"/>
+      </actions>
+    </cue>
+
+    <!-- One raw line arrived from the bridge. Hand it to Lua to decode. -->
+    <cue name="Twitch_OnPipeData" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <actions>
+        <set_value name="$line" exact="event.param"/>
+        <do_if value="$line == 'ERROR' or $line == 'CLOSED'">
+          <debug_text text="'[Twitch] pipe error/closed; will retry'" filter="general"/>
+          <!-- simple backoff then restart the read loop -->
+          <signal_cue cue="Twitch_StartReading" delay="2s"/>
+        </do_if>
+        <do_else>
+          <raise_lua_event name="'Twitch.Decode'" param="$line"/>
+        </do_else>
+      </actions>
+    </cue>
+
+    <!-- ===== inbound typed events (emitted by Lua after JSON decode) ======== -->
+    <!-- Lua calls AddUITriggeredEvent('Twitch_Integration', <type>, <rawjson>). -->
+
+    <cue name="Twitch_OnChat" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'chat'"/>
+      </conditions>
+      <actions>
+        <set_value name="$payload" exact="event.param3"/>
+        <debug_text text="'[Twitch] chat: %s'.[$payload]" filter="general"/>
+        <!-- TODO: parse a !command and produce a game effect (spawn, vote, ...) -->
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnRedeem" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'redeem'"/>
+      </conditions>
+      <actions>
+        <set_value name="$payload" exact="event.param3"/>
+        <debug_text text="'[Twitch] redeem: %s'.[$payload]" filter="general"/>
+        <!-- TODO: map reward -> in-game event -->
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnRaid" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'raid'"/>
+      </conditions>
+      <actions>
+        <set_value name="$payload" exact="event.param3"/>
+        <debug_text text="'[Twitch] raid: %s'.[$payload]" filter="general"/>
+        <!-- TODO: big in-game event scaled by viewer count -->
+        <!-- example of the outbound path: thank the raider in chat -->
+        <signal_cue_instantly cue="Twitch_Say" param="'Thanks for the raid!'"/>
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnSub" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'sub'"/>
+      </conditions>
+      <actions>
+        <set_value name="$payload" exact="event.param3"/>
+        <debug_text text="'[Twitch] sub: %s'.[$payload]" filter="general"/>
+      </actions>
+    </cue>
+
+    <!-- ===== outbound (game -> bridge -> Twitch) ============================ -->
+    <!-- Build a minimal JSON line and write it to the pipe.
+         NOTE: naive string build; escape $msg for quotes/backslashes before ship. -->
+    <cue name="Twitch_Say" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <actions>
+        <set_value name="$msg" exact="event.param"/>
+        <set_value name="$json" exact="'{&quot;t&quot;:&quot;say&quot;,&quot;msg&quot;:&quot;' + $msg + '&quot;}'"/>
+        <signal_cue_instantly cue="md.Named_Pipes.Write"
+          param="table[$pipe='twitch', $msg=$json, $cue=Twitch_OnWriteResult]"/>
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnWriteResult" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <actions>
+        <do_if value="event.param != 'SUCCESS'">
+          <debug_text text="'[Twitch] write failed: %s'.[event.param]" filter="general"/>
+        </do_if>
+      </actions>
+    </cue>
+
+  </cues>
+</mdscript>

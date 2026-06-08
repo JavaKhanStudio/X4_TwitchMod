@@ -29,12 +29,14 @@ Goal: text typed in an external process appears in X4, and vice-versa. **No Twit
 - **Exit criteria:** reliable bidirectional line exchange via the Named Pipes MD API, no
       frame stalls.
 
-## Milestone 2 — The Bridge ⇄ X4 line protocol
-- [ ] Implement the Bridge skeleton (Python `twitchAPI` likely) with a **fake Twitch
-      source** (stdin or a test harness) so we can develop the protocol without live Twitch.
-- [ ] Lock the wire format (`00-overview` §5). Implement robust line framing + a `ready`
-      handshake + reconnect on both sides.
-- [ ] X4 MD: a clean dispatcher cue that switches on `t` and routes to handlers.
+## Milestone 2 — The Bridge ⇄ X4 line protocol  ✅ SCAFFOLDED (2026-06-08)
+- [x] Bridge skeleton (`bridge/`, stdlib-only) with a **fake stdin Twitch source**.
+- [x] Wire format locked (newline-JSON, `protocol.py`); `ready`/`hello` handshake;
+      reconnect in `x4link.py`. **End-to-end smoke test passes** (`tools/smoke_test.sh`,
+      both directions via `tools/mock_x4.py`).
+- [x] X4 MD dispatcher cues per type (`md/Twitch_Integration.xml`) + Lua `json_decode`
+      (`ui/twitch_integration.lua`, **unit-tested via lupa** against real bridge output).
+- [ ] Remaining: validate the X4 side live (the `[VERIFY]` markers) once the game is in.
 
 ## Milestone 3 — Twitch read path (chat → game)
 - [ ] Bridge: Twitch Developer app, OAuth (user token + refresh + hourly validate).
@@ -65,9 +67,9 @@ Goal: text typed in an external process appears in X4, and vice-versa. **No Twit
 | D2 | Transport: localhost TCP vs Unix socket | ✅ **RESOLVED: Unix domain socket** in the savegame folder — the bekopharm fork's proven, maintained path. See doc 06. |
 | D3 | Bridge language: Python vs Node | ✅ **RESOLVED: Python + `twitchAPI`** (ecosystem fit, EventSub+Helix+OAuth built in). |
 | D4 | Transport native lib | ✅ **RESOLVED: depend on + vendor a pinned copy of bekopharm `linux-compat` fork** (MIT, 8.x-maintained). No custom C shim. `lua5.1-socket` is on Fedora. See docs 05 & 06. |
-| D5 | Wire format: JSON lines vs `|`-delimited | JSON nicer; `|` cheaper/robuster in Lua. Start JSON, fall back if needed. |
-| D6 | Where command policy lives | Likely Bridge = perms/cooldowns, X4 = effects. |
-| D7 | Token storage | Bridge-owned local file; never inside the X4 extension. |
+| D5 | Wire format: JSON lines vs `|`-delimited | ✅ **RESOLVED: newline-JSON, decoded in Lua** (`ui/twitch_integration.lua` `json_decode`, unit-tested). MD branches on a typed event, never parses strings. |
+| D6 | Where command policy lives | ✅ **RESOLVED (direction): Bridge owns perms/cooldowns/rate-limits; X4/MD owns effects.** To implement in Milestone 3. |
+| D7 | Token storage | ✅ **RESOLVED: Bridge-owned file** `~/.config/x4-twitch-bridge/tokens.json` (`config.py`); gitignored; never in the extension. |
 
 ## What to build first, concretely
 When we resume coding: **Milestone 0 → Milestone 1 spike.** Don't touch Twitch until the

@@ -5,8 +5,12 @@ chat, channel points, subs, bits and raids drive in-game events, and in-game eve
 back to chat.
 
 ## Status
-🔬 **Research / reference-bank phase.** No code yet. The architecture and the (non-obvious)
-way to get networking out of X4's sandbox are documented in [`docs/`](docs/).
+🏗️ **Scaffolded.** Architecture resolved (see [`docs/`](docs/)); both halves stubbed and
+tested as far as possible without the game:
+- **`bridge/`** — Python Twitch↔X4 bridge. Runnable today (stdlib only); real Twitch source
+  stubbed. End-to-end smoke test passes (`bridge/tools/smoke_test.sh`).
+- **`extensions/twitch_integration/`** — the X4 mod (MD + Lua). Lua JSON decode unit-tested;
+  X4 glue marked `[VERIFY]` pending a live game (X4 not yet installed).
 
 ## How it works (the short version)
 X4 mods can't open sockets directly. We bridge out of the game:
