@@ -38,9 +38,14 @@ Goal: text typed in an external process appears in X4, and vice-versa. **No Twit
       (`ui/twitch_integration.lua`, **unit-tested via lupa** against real bridge output).
 - [ ] Remaining: validate the X4 side live (the `[VERIFY]` markers) once the game is in.
 
-## Milestone 3 — Twitch read path (chat → game)
-- [ ] Bridge: Twitch Developer app, OAuth (user token + refresh + hourly validate).
-- [ ] Bridge: EventSub WS, subscribe `channel.chat.message`; normalize → protocol lines.
+## Milestone 3 — Twitch read path (chat → game)  🟡 CODE DONE, pending live creds
+- [x] Bridge: real EventSub source (`sources/twitch.py`) via **twitchAPI 4.5**.
+      Auth + refresh via `UserAuthenticationStorageHelper` (token file, not in the mod).
+      Subscribes chat / redeem / sub / cheer / raid / follow → normalized protocol lines.
+      Helix `send_chat_message` for the `say` action. **Every method/scope/event-field
+      name verified against the installed library** (`tools/test_twitch_api.py`).
+- [ ] LIVE: create a Twitch dev app, set `TWITCH_CLIENT_ID/SECRET/CHANNEL`, run
+      `--source twitch`, do the one-time OAuth, confirm events flow. (Needs creds.)
 - [ ] X4: first real effect — e.g. `!ping` in chat → in-game notification naming the user.
 - [ ] Add permission/cooldown policy (Bridge-side) and one gameplay command, e.g.
       `!spawn fighter` → MD spawns a ship near the player.

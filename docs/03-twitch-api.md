@@ -1,5 +1,14 @@
 # 03 — Twitch API (2026-current)
 
+> **Implemented** in `bridge/twitch_bridge/sources/twitch.py` using **twitchAPI 4.5**
+> (`EventSubWebsocket` + `UserAuthenticationStorageHelper` + Helix `send_chat_message`).
+> Concrete mapping: `listen_channel_chat_message`→`chat`, `..._points_custom_reward_
+> redemption_add`→`redeem`, `..._subscribe`→`sub`, `..._cheer`→`cheer`, `..._raid`→`raid`,
+> `..._follow_v2`→`follow`. Scopes: `USER_READ_CHAT`, `USER_WRITE_CHAT`, `USER_BOT`,
+> `CHANNEL_READ_REDEMPTIONS`, `CHANNEL_READ_SUBSCRIPTIONS`, `BITS_READ`,
+> `MODERATOR_READ_FOLLOWERS` (raid needs none). Names verified by `tools/test_twitch_api.py`.
+> Still TODO live: create the dev app + first OAuth. The notes below are the background.
+
 This is what the **Bridge process** implements. The X4 side never talks to Twitch
 directly. Sources in `references.md`; all current as of mid-2026.
 

@@ -1,3 +1,6 @@
 # The bridge skeleton + mock_x4 run on the Python standard library alone.
-# The REAL Twitch source (twitch_bridge/sources/twitch.py, Milestone 3) needs:
-# twitchAPI>=4    # EventSub WebSocket + Helix + OAuth (PyTwitchAPI)
+# The REAL Twitch source (twitch_bridge/sources/twitch.py) needs:
+twitchAPI>=4          # EventSub WebSocket + Helix + OAuth (PyTwitchAPI)
+
+# Dev/test only (optional):
+# lupa                # embedded Lua VM, for tools/test_lua_decode.py

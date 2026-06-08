@@ -42,11 +42,20 @@ cd bridge && python -m twitch_bridge --socket /tmp/x4_twitch.sock
 
 A non-interactive smoke test of the same loop lives at `tools/smoke_test.sh`.
 
-## Real Twitch (later)
-Set env and switch source:
+## Real Twitch
+`sources/twitch.py` is implemented (EventSub + Helix via twitchAPI). To go live:
 ```bash
-export TWITCH_CHANNEL=... TWITCH_CLIENT_ID=... TWITCH_CLIENT_SECRET=...
-pip install -r requirements.txt   # uncomment twitchAPI first
+pip install -r requirements.txt
+export TWITCH_CLIENT_ID=... TWITCH_CLIENT_SECRET=... TWITCH_CHANNEL=yourchannel
 python -m twitch_bridge --source twitch --socket ~/.config/EgoSoft/X4/save/x4_twitch.xml
 ```
-Implement `sources/twitch.py` first (see docs/03-twitch-api.md).
+First run opens a browser for OAuth; tokens are stored under
+`~/.config/x4-twitch-bridge/` and auto-refreshed thereafter. Create the app at
+https://dev.twitch.tv/console (OAuth redirect `http://localhost:17563`).
+
+## Tests
+```bash
+bash tools/smoke_test.sh        # end-to-end plumbing (stdlib only)
+python tools/test_twitch_api.py # twitchAPI names/signatures (needs twitchAPI)
+python tools/test_lua_decode.py # X4 Lua JSON decoder (needs lupa)
+```
