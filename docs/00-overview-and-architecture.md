@@ -41,9 +41,11 @@ socket directly from inside the game**. No DLL, no pywin32. X4 itself becomes a 
 endpoint that an external app connects to. This is the route for a **native-Linux** build.
 See `02-network-bridge-linux.md` for the concrete mechanism.
 
-> **Decision (provisional):** target **native-Linux X4 + LuaSocket (Path B)**, because the
-> dev machine is Fedora Linux. If the user actually runs X4 through Proton/Wine, Path A
-> (Windows named pipes under Wine) may be simpler — **confirm which before committing.**
+> **Decision (RESOLVED):** target **native-Linux X4 + LuaSocket (Path B)** via the
+> **bekopharm `linux-compat` fork** (MIT, maintained to X4 8.x). X4 hosts a **Unix domain
+> socket** in the savegame folder; our Python bridge connects in; our MD code uses the
+> documented **Named Pipes API**. Full rationale + verified ecosystem survey in
+> `06-ecosystem-survey.md`. (X4 is at **8.x**; SN API pin **≥1.93**; Protected UI **off**.)
 
 ## 3. High-level architecture
 
@@ -108,4 +110,6 @@ format is even cheaper if we hit performance/robustness issues. Revisit in build
 4. `04-build-plan.md` — concrete milestones & open decisions.
 5. `05-native-cpp-and-ffi-option.md` — the C++/native-code route via LuaJIT FFI; why we
    don't need to write a C++ lib (LuaSocket already gives us the native seam).
-6. `references.md` — every source URL, the link bank.
+6. `06-ecosystem-survey.md` — **verified, decision-oriented survey** of the whole modding
+   tooling/library ecosystem; the resolved architecture and why. **Read this.**
+7. `references.md` — every source URL, the link bank.

@@ -17,15 +17,17 @@ that with a "hello world" *before* writing any Twitch or gameplay logic.
 
 ## Milestone 1 — "Hello socket" spike (THE de-risk)
 Goal: text typed in an external process appears in X4, and vice-versa. **No Twitch yet.**
-- [ ] Install LuaSocket-enabled `sn_mod_support_apis` (bekopharm `linux-compat`) OR vendor
-      a minimal loader.
-- [ ] Disable Protected UI Mode.
-- [ ] Tiny X4 extension: Lua opens a localhost TCP listener (non-blocking), reads lines,
-      and `raise_lua_event`s them to an MD cue that prints to the in-game event log /
-      a debug `<show_help>`/log file.
-- [ ] External `nc`/python client connects and sends a line → see it in game.
-- [ ] X4 sends a line back on a keypress/timer → see it in the client.
-- **Exit criteria:** reliable bidirectional line exchange, no frame stalls.
+- [ ] `dnf install lua5.1-socket`; copy `socket/core.so` + `socket/unix.so` into the game
+      lua path (`game/ui/core/lualibs/` or `.../sn_mod_support_apis/ui/c_library/socket/`).
+- [ ] Install the bekopharm `linux-compat` `sn_mod_support_apis` (SN API ≥1.93); set the
+      "Pipe Prefix Linux" option to the savegame path. Disable Protected UI Mode.
+- [ ] Confirm the in-game socket appears in `~/.config/EgoSoft/X4/save/` and round-trips
+      with `nc -U <socketfile>` (raw transport check, no MD yet).
+- [ ] MD test cue: `Named_Pipes.Write` a line + `Named_Pipes.Read` (continuous) and print
+      received lines to the in-game event log — proves the documented MD API works on Linux.
+- [ ] Python client connects to the Unix socket, exchanges lines both ways.
+- **Exit criteria:** reliable bidirectional line exchange via the Named Pipes MD API, no
+      frame stalls.
 
 ## Milestone 2 — The Bridge ⇄ X4 line protocol
 - [ ] Implement the Bridge skeleton (Python `twitchAPI` likely) with a **fake Twitch
@@ -60,9 +62,9 @@ Goal: text typed in an external process appears in X4, and vice-versa. **No Twit
 | # | Decision | Notes |
 |---|----------|-------|
 | D1 | Native-Linux X4 vs Proton | ✅ **RESOLVED: native-Linux (Path B / LuaSocket).** |
-| D2 | Transport: localhost TCP vs Unix socket | TCP = portable; Unix = bekopharm's proven path. |
+| D2 | Transport: localhost TCP vs Unix socket | ✅ **RESOLVED: Unix domain socket** in the savegame folder — the bekopharm fork's proven, maintained path. See doc 06. |
 | D3 | Bridge language: Python vs Node | ✅ **RESOLVED: Python + `twitchAPI`** (ecosystem fit, EventSub+Helix+OAuth built in). |
-| D4 | Transport native lib: (a) depend on bekopharm LuaSocket fork, (b) vendor LuaSocket, (c) write our own tiny C shim `.so` (FFI) | Default LuaSocket; C-shim is the fallback if Lua-5.1 LuaSocket on Fedora is painful. See `05-native-cpp-and-ffi-option.md`. |
+| D4 | Transport native lib | ✅ **RESOLVED: depend on + vendor a pinned copy of bekopharm `linux-compat` fork** (MIT, 8.x-maintained). No custom C shim. `lua5.1-socket` is on Fedora. See docs 05 & 06. |
 | D5 | Wire format: JSON lines vs `|`-delimited | JSON nicer; `|` cheaper/robuster in Lua. Start JSON, fall back if needed. |
 | D6 | Where command policy lives | Likely Bridge = perms/cooldowns, X4 = effects. |
 | D7 | Token storage | Bridge-owned local file; never inside the X4 extension. |

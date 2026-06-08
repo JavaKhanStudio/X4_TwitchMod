@@ -16,8 +16,10 @@ Twitch  ⇄  Bridge process (Python/Node)  ⇄  socket  ⇄  LuaSocket in X4  �
          EventSub + Helix + OAuth          localhost      (Lua UI layer)     (game logic)
 ```
 
-On **Linux** (this project's target) the socket is opened *inside* X4 via a side-loaded
-**LuaSocket** library (bekopharm's approach), not Windows named pipes.
+On **Linux** (this project's target) the socket is a **Unix domain socket opened inside X4**
+via a side-loaded **LuaSocket** library — the MIT-licensed, X4-8.x-maintained **bekopharm
+`linux-compat` fork** of the Mod Support APIs — not Windows named pipes. Our MD scripts use
+its documented **Named Pipes API**; the Python bridge connects in as a client.
 
 ## Reference bank — read in order
 | Doc | What's in it |
@@ -27,6 +29,8 @@ On **Linux** (this project's target) the socket is opened *inside* X4 via a side
 | [`docs/02-network-bridge-linux.md`](docs/02-network-bridge-linux.md) | Named Pipes vs LuaSocket; the Linux socket mechanism. |
 | [`docs/03-twitch-api.md`](docs/03-twitch-api.md) | EventSub, OAuth scopes, sending chat (2026-current). |
 | [`docs/04-build-plan.md`](docs/04-build-plan.md) | Staged milestones + open decisions. |
+| [`docs/05-native-cpp-and-ffi-option.md`](docs/05-native-cpp-and-ffi-option.md) | The C++/native (LuaJIT FFI) route — and why we don't need it. |
+| [`docs/06-ecosystem-survey.md`](docs/06-ecosystem-survey.md) | **Verified survey of the modding ecosystem + the resolved architecture. Start here for the "what exists" picture.** |
 | [`docs/references.md`](docs/references.md) | Every source URL. |
 
 ## Next step

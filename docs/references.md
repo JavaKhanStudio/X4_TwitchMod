@@ -26,7 +26,12 @@ Every source backing this reference bank. Grouped by topic. (Researched 2026-06.
 - X4 External App (Mycu, example companion): https://www.nexusmods.com/x4foundations/mods/818
 
 ## Linux socket bridge (LuaSocket) — bekopharm ✅ our path
-- **Quick-manual (LuaSocket setup on Linux):** https://github.com/bekopharm/x4-projects/wiki/Quick-manual
+- **Quick-manual (LuaSocket setup on Linux, "X4 8.x"):** https://github.com/bekopharm/x4-projects/wiki/Quick-manual
+- bekopharm/x4-projects (linux-compat branch, MIT): https://github.com/bekopharm/x4-projects/tree/linux-compat
+- Fedora package `lua5.1-socket`: https://packages.fedoraproject.org/pkgs/lua-socket/lua5.1-socket/
+- djfhe/x4_http — HTTP/HTTPS client inside X4 Lua (luasocket+luasec): https://github.com/djfhe/x4_http
+- "Community Edition" fork (ARCHIVED 2025-09, X4 7.X only — do NOT use for 8.x): https://github.com/iomatix/x4-projects ; https://www.nexusmods.com/x4foundations/mods/1699
+- Egosoft cross-platform cloud saves (Feb 2026): https://www.gamingonlinux.com/2026/02/x4-foundations-is-getting-cross-platform-cloud-saves-possible-breakage-coming-for-linux/
 - x4-simpit (working example using the socket): https://github.com/bekopharm/x4-simpit
 - "Running X4 with my SimPit" writeup: https://beko.famkos.net/2023/04/04/running-x4-foundations-with-my-simpit/
 - "Modding my X4 into using…" (LuaSocket origin post): https://beko.famkos.net/2023/04/03/15628467/

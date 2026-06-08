@@ -1,5 +1,11 @@
 # 02 — The Network Bridge (getting data in/out of X4)
 
+> **⚠️ Updated by `docs/06-ecosystem-survey.md` (verified research).** Key deltas: X4 is at
+> **8.x** (not 7.x); the **Community Edition** fork is **archived/dead** — use the original
+> for 8.x; **Fedora packages `lua5.1-socket`** (no need to build it); and the bekopharm
+> `linux-compat` fork is the **MIT-licensed, 8.x-maintained** thing we depend on. Read doc 06
+> alongside this.
+
 This is the crux of the whole project. X4's Lua sandbox has no networking by default, so
 we must establish a socket between the game and an external process. Two routes:
 
@@ -72,9 +78,9 @@ An external app connects to it. No Windows APIs involved.
    `linux-compat` branch and put it in `<X4>/extensions/`.
 2. **Install the system LuaSocket for Lua 5.1**: package `lua5.1-socket`
    (Debian/Ubuntu naming). **`lua5.4-socket` is INCOMPATIBLE** — X4's Lua is **5.1**.
-   - **On Fedora (our box):** equivalent is `compat-lua-libs` + a Lua 5.1 `luasocket`
-     build, or build LuaSocket against Lua 5.1 headers. **[VERIFY Fedora pkg names]** —
-     `lua5.1-socket` does not exist verbatim on Fedora; we likely build `.so`s ourselves.
+   - **On Fedora (our box):** ✅ **`lua5.1-socket` IS packaged on Fedora**
+     (`packages.fedoraproject.org/pkgs/lua-socket/lua5.1-socket`). Install it, then copy
+     `socket/core.so` + `socket/unix.so` into the game lua path. No self-build needed.
 3. **Copy the socket `.so` libraries** into a path X4's Lua searches:
    - `<X4>/game/ui/core/lualibs/` **or**
    - `<X4>/extensions/sn_mod_support_apis/ui/c_library/socket/`
@@ -123,5 +129,7 @@ Bridge pushes Twitch events as lines and X4 reads them in a continuous loop.
   personal mod; note it in the README for any future distribution.
 - Socket reads must be **non-blocking** (`settimeout(0)`) so they never stall the game
   frame; poll each tick via a Lua timer / MD loop.
-- X4 patches (7.x) periodically break the Mod Support APIs — pin to a known-good combo and
-  watch the "Community Edition" fork (`sn_mod_support_apis` CE for patch 7).
+- X4 patches periodically break the Mod Support APIs — pin to a known-good combo. **Pin SN
+  API ≥ 1.93** (1.91/1.92 had an 8.0 main-menu regression; 1.93 fixed it). **Do NOT use the
+  "Community Edition" fork** — it's archived (2025-09-18), 7.X-only, and superseded by the
+  original SirNukes/bvbohnen API for 8.x. See doc 06.
