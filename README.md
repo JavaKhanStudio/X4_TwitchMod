@@ -70,7 +70,8 @@ The companion's **① Connect to Twitch** panel walks you through it:
    **[dev.twitch.tv/console](https://dev.twitch.tv/console/apps/create)** → *Register Your Application*:
    - **Name:** anything (e.g. *My X4 Companion*)
    - **OAuth Redirect URL:** `http://localhost:17563` (exactly this)
-   - **Category:** *Application Integration* · **Client Type:** *Confidential*
+   - **Category:** *Application Integration*
+   - **Client Type:** *Confidential*
 2. On the app's page, copy the **Client ID**, click **New Secret**, copy the **Client Secret**.
 3. Paste both + your channel login into the panel and click **Connect**. Your browser opens to
    authorize — approve, and you're live (one time; remembered & auto-refreshed).

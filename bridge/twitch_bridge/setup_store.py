@@ -15,8 +15,13 @@ DEFAULT_PATH = Path.home() / ".config" / "x4-twitch-bridge" / "setup.json"
 FIELDS = ("client_id", "client_secret", "channel")
 
 
+def _path(path: str | os.PathLike | None) -> Path:
+    # X4_TWITCH_SETUP lets tests/screenshots point at an isolated file.
+    return Path(path or os.environ.get("X4_TWITCH_SETUP") or DEFAULT_PATH)
+
+
 def load(path: str | os.PathLike | None = None) -> dict:
-    p = Path(path or DEFAULT_PATH)
+    p = _path(path)
     if not p.exists():
         return {}
     try:
@@ -27,7 +32,7 @@ def load(path: str | os.PathLike | None = None) -> dict:
 
 
 def save(data: dict, path: str | os.PathLike | None = None) -> None:
-    p = Path(path or DEFAULT_PATH)
+    p = _path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     payload = {k: str(data.get(k, "") or "") for k in FIELDS}
     fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")

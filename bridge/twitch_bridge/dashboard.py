@@ -91,7 +91,8 @@ PAGE = """<!doctype html>
         <ul class="sub">
           <li>Name: anything (e.g. <i>My X4 Companion</i>)</li>
           <li>OAuth Redirect URL: <code>http://localhost:17563</code> &nbsp;(exactly this)</li>
-          <li>Category: <i>Application Integration</i> · Client Type: <i>Confidential</i></li>
+          <li>Category: <i>Application Integration</i></li>
+          <li>Client Type: <i>Confidential</i></li>
         </ul></li>
       <li>On the app's page: copy the <b>Client ID</b>, click <i>New Secret</i>, copy the <b>Client Secret</b>.</li>
       <li>Paste both below + your channel login, click <b>Connect</b>. A browser opens to authorize —

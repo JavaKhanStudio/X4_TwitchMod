@@ -9,6 +9,7 @@ and no real credentials, so the images contain no personal data.
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -30,11 +31,16 @@ def wait_up(url, tries=80):
     return False
 
 
+# Point at an empty, isolated setup file so the bridge can NEVER read the real
+# ~/.config setup.json — screenshots must show a clean, empty panel (no real
+# client-id / channel). (HOME must stay real, or pip --user packages vanish.)
+SHOT_SETUP = tempfile.mktemp(suffix="-empty-setup.json")
 proc = subprocess.Popen(
     [sys.executable, "-m", "twitch_bridge", "--source", "twitch", "--dashboard-port", str(PORT),
-     "--socket", "/tmp/x4-twitch.sock", "--wallet","/tmp/shot_wallet.json","--no-launcher"],
+     "--socket", "/tmp/x4-twitch.sock", "--wallet", "/tmp/shot_wallet.json", "--no-launcher"],
     cwd=str(ROOT), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-    env={**os.environ, "PYTHONPATH": ".", "TWITCH_CLIENT_ID": "", "TWITCH_CLIENT_SECRET": ""},
+    env={**os.environ, "PYTHONPATH": ".", "X4_TWITCH_SETUP": SHOT_SETUP,
+         "TWITCH_CLIENT_ID": "", "TWITCH_CLIENT_SECRET": "", "TWITCH_CHANNEL": ""},
 )
 try:
     if not wait_up(BASE + "api/status"):
@@ -58,5 +64,5 @@ finally:
         proc.wait(timeout=3)
     except Exception:
         proc.kill()
-    for f in ("/tmp/shot_wallet.json",):
-        Path(f).unlink(missing_ok=True)
+    Path("/tmp/shot_wallet.json").unlink(missing_ok=True)
+    Path(SHOT_SETUP).unlink(missing_ok=True)
