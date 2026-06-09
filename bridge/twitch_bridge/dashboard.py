@@ -69,12 +69,18 @@ PAGE = """<!doctype html>
     font-size:12.5px;color:#cbb6ff;margin:0 0 14px}
   .steps code{background:#0e0f1a;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:#8cd0ff}
   .steps a{color:#8cd0ff}
-  .form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+  .form .field{display:flex;flex-direction:column;gap:3px;flex:1;min-width:150px}
+  .form .field>span{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
   .form input{background:#0e0f1a;border:1px solid var(--line);color:var(--txt);border-radius:8px;
-    padding:8px 10px;font-size:13px;flex:1;min-width:140px}
+    padding:8px 10px;font-size:13px;width:100%}
+  .form input:focus{outline:2px solid var(--tw);outline-offset:0}
   .form button{background:var(--tw);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}
   .form button:hover{filter:brightness(1.1)}
   .dim{color:var(--dim);font-size:12px}
+  .copy{background:#9146ff22;border:1px solid #9146ff55;color:#cbb6ff;border-radius:6px;
+    padding:1px 8px;font-size:11px;cursor:pointer;vertical-align:middle}
+  .copy:hover{background:#9146ff33}
   #setup h2{color:var(--tw)}
   @media(max-width:680px){.grid{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
@@ -90,7 +96,8 @@ PAGE = """<!doctype html>
         → <i>Register Your Application</i>:
         <ul class="sub">
           <li>Name: anything (e.g. <i>My X4 Companion</i>)</li>
-          <li>OAuth Redirect URL: <code>http://localhost:17563</code> &nbsp;(exactly this)</li>
+          <li>OAuth Redirect URL: <code>http://localhost:17563</code>
+            <button type="button" class="copy" data-copy="http://localhost:17563">copy</button> (exactly this)</li>
           <li>Category: <i>Application Integration</i></li>
           <li>Client Type: <i>Confidential</i></li>
         </ul></li>
@@ -101,11 +108,14 @@ PAGE = """<!doctype html>
     <p class="note">💡 Use <b>your own app</b> (above), not a token-generator site — that's what lets the
       connection refresh itself so it never expires mid-stream.</p>
     <div class="form">
-      <input id="cid" placeholder="Client ID">
-      <input id="csecret" type="password" placeholder="Client Secret">
-      <input id="chan" placeholder="channel (your twitch login)">
+      <label class="field"><span>Client ID</span>
+        <input id="cid" placeholder="paste from your app page" autocomplete="off"></label>
+      <label class="field"><span>Client Secret</span>
+        <input id="csecret" type="password" placeholder="click “New Secret”" autocomplete="off"></label>
+      <label class="field"><span>Channel</span>
+        <input id="chan" placeholder="your twitch login" autocomplete="off"></label>
       <button id="connect">Connect to Twitch</button>
-      <span id="cstate" class="dim"></span>
+      <span id="cstate" class="dim" role="status" aria-live="polite"></span>
     </div>
   </div>
   <div class="grid">
@@ -144,46 +154,52 @@ PAGE = """<!doctype html>
 const $=id=>document.getElementById(id);
 function fmtUp(s){const h=s/3600|0,m=s%3600/60|0,x=s%60;return h+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')}
 function fmtT(ts){const d=new Date(ts*1000);return d.toLocaleTimeString([], {hour12:false})}
-function dot(el,on){el.className='dot '+(on?'on':'off')}
+function esc(t){return (t??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+// Touch the DOM ONLY when a value changes — polling must not re-write unchanged
+// nodes, or it wipes text selection (you can't copy) and churns the page.
+function dot(el,on){const c='dot '+(on?'on':'off'); if(el.className!==c) el.className=c;}
+function txt(el,v){v=''+v; if(el.textContent!==v) el.textContent=v;}
+function html(el,v){if(el.__h!==v){el.__h=v; el.innerHTML=v;}}
+function disp(el,show){const d=show?'':'none'; if(el.style.display!==d) el.style.display=d;}
 async function tick(){
   try{
     const s=await (await fetch('/api/status',{cache:'no-store'})).json();
     const live=s.x4_connected&&s.source_running;
-    dot($('big'),live); $('bigt').textContent=live?'LIVE':(s.source_running?'waiting for X4':'idle');
-    $('source').textContent=s.source||'—'; $('channel').textContent=s.channel||'(not set)';
-    dot($('srcdot'),s.source_running); $('srcstate').textContent=s.source_running?'running':'stopped';
+    dot($('big'),live); txt($('bigt'),live?'LIVE':(s.source_running?'waiting for X4':'idle'));
+    txt($('source'),s.source||'—'); txt($('channel'),s.channel||'(not set)');
     const tw=s.twitch||{};
     if(s.source==='twitch'){
-      if(tw.connected){ $('setup').style.display='none'; dot($('srcdot'),true);
-        $('srcstate').textContent='connected: '+(tw.login||'?'); }
-      else { $('setup').style.display=''; dot($('srcdot'),!!tw.connecting);
-        $('srcstate').textContent=tw.connecting?'authorizing…':'not connected';
+      if(tw.connected){ disp($('setup'),false); dot($('srcdot'),true); txt($('srcstate'),'connected: '+(tw.login||'?')); }
+      else { disp($('setup'),true); dot($('srcdot'),!!tw.connecting);
+        txt($('srcstate'),tw.connecting?'authorizing…':'not connected');
         if(!$('cid').value&&tw.client_id) $('cid').value=tw.client_id;
         if(!$('chan').value&&tw.channel) $('chan').value=tw.channel;
-        if(!document.activeElement||document.activeElement.id!=='cstate')
-          $('cstate').innerHTML=tw.connecting?'authorizing… <b>check your browser</b>':(tw.error?('<span class="err">'+esc(tw.error)+'</span>'):''); }
-    } else { $('setup').style.display='none'; }
-    dot($('x4dot'),s.x4_connected); $('x4state').textContent=s.x4_connected?'linked':'waiting';
-    $('socket').textContent=s.socket_path||'—'; $('uptime').textContent=fmtUp(s.uptime_s);
-    $('ein').textContent=s.events_in; $('cmd').textContent=s.commands_fired; $('out').textContent=s.actions_out;
+        if(document.activeElement&&document.activeElement.id==='cstate'){}
+        else html($('cstate'),tw.connecting?'authorizing… <b>check your browser</b>':(tw.error?('<span class="err">'+esc(tw.error)+'</span>'):'')); }
+    } else { disp($('setup'),false); dot($('srcdot'),s.source_running); txt($('srcstate'),s.source_running?'running':'stopped'); }
+    dot($('x4dot'),s.x4_connected); txt($('x4state'),s.x4_connected?'linked':'waiting');
+    txt($('socket'),s.socket_path||'—'); txt($('uptime'),fmtUp(s.uptime_s));
+    txt($('ein'),s.events_in); txt($('cmd'),s.commands_fired); txt($('out'),s.actions_out);
     const e=s.econ||{};
-    if(e&&Object.keys(e).length){ $('econcard').style.display=''; $('ev').textContent=e.viewers??0;
-      $('ecoins').textContent=e.coins_in_circulation??0; $('eawarded').textContent=e.coins_awarded_total??0; }
-    const feed=$('feed');
+    if(e&&Object.keys(e).length){ disp($('econcard'),true); txt($('ev'),e.viewers??0);
+      txt($('ecoins'),e.coins_in_circulation??0); txt($('eawarded'),e.coins_awarded_total??0); }
     if(s.recent&&s.recent.length){
-      feed.innerHTML=s.recent.map(r=>`<li><span class="t">${fmtT(r.ts)}</span><span class="b ${r.dir}">${r.dir}</span><span class="x">${esc(r.text)}</span></li>`).join('');
-    }
-    $('foot').innerHTML=s.last_error?('<span class="err">last error: '+esc(s.last_error)+'</span>'):'connected to companion · refreshing every 1s';
-  }catch(e){ $('bigt').textContent='companion offline'; dot($('big'),false); $('foot').textContent='cannot reach companion (is it running?)'; }
+      html($('feed'),s.recent.map(r=>`<li><span class="t">${fmtT(r.ts)}</span><span class="b ${r.dir}">${r.dir}</span><span class="x">${esc(r.text)}</span></li>`).join('')); }
+    html($('foot'),s.last_error?('<span class="err">last error: '+esc(s.last_error)+'</span>'):'connected to companion · refreshing every 1s');
+  }catch(e){ txt($('bigt'),'companion offline'); dot($('big'),false); html($('foot'),'cannot reach companion (is it running?)'); }
 }
-function esc(t){return (t??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+// copy buttons (e.g. the redirect URL) — copying while polling is otherwise fiddly
+document.querySelectorAll('.copy').forEach(btn=>btn.onclick=()=>{
+  navigator.clipboard&&navigator.clipboard.writeText(btn.dataset.copy||'');
+  const o=btn.textContent; btn.textContent='copied!'; setTimeout(()=>{btn.textContent=o;},1200);
+});
 const cbtn=$('connect');
 if(cbtn) cbtn.onclick=async()=>{
   const b={client_id:$('cid').value.trim(),client_secret:$('csecret').value.trim(),channel:$('chan').value.trim()};
-  if(!b.client_id||!b.client_secret){$('cstate').innerHTML='<span class="err">Client ID and Secret are required</span>';return;}
-  $('cstate').innerHTML='starting… <b>a browser window will open to authorize</b>';
+  if(!b.client_id||!b.client_secret){html($('cstate'),'<span class="err">Client ID and Secret are required</span>');return;}
+  html($('cstate'),'starting… <b>a browser window will open to authorize</b>');
   try{ await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); }
-  catch(e){ $('cstate').innerHTML='<span class="err">could not reach companion</span>'; }
+  catch(e){ html($('cstate'),'<span class="err">could not reach companion</span>'); }
 };
 tick(); setInterval(tick,1000);
 </script></body></html>"""

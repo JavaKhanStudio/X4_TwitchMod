@@ -159,18 +159,22 @@ class TwitchSource(Source):
         helper = UserAuthenticationStorageHelper(self._twitch, _scopes(), storage_path=storage)
         await helper.bind()  # first run opens a browser; then refreshes from disk
 
-        me = await self._twitch.get_users()
-        self._bot_id = me[0].id  # the authenticated account reads/sends chat
+        # NOTE: Twitch.get_users() is an ASYNC GENERATOR in twitchAPI 4.x — iterate
+        # it, never `await` it (that raises "'async_generator' object can't be awaited").
+        me = await self._first_user()
+        if me is None:
+            raise RuntimeError("could not fetch the authenticated Twitch user")
+        self._bot_id = me.id  # the authenticated account reads/sends chat
         if cfg.channel:
-            chan = await self._twitch.get_users(logins=[cfg.channel])
-            if not chan:
+            chan = await self._first_user(logins=[cfg.channel])
+            if chan is None:
                 raise RuntimeError(f"Twitch channel not found: {cfg.channel!r}")
-            self._broadcaster_id = chan[0].id
+            self._broadcaster_id = chan.id
         else:
             self._broadcaster_id = self._bot_id  # default: our own channel
-        self.login = me[0].login
+        self.login = me.login
         self._notify()
-        log.info("authenticated as %s; broadcaster=%s", me[0].login, self._broadcaster_id)
+        log.info("authenticated as %s; broadcaster=%s", me.login, self._broadcaster_id)
 
         self._eventsub = EventSubWebsocket(self._twitch)
         self._eventsub.start()  # non-blocking; subscribe within ~10s
@@ -189,6 +193,12 @@ class TwitchSource(Source):
         # channel.raid takes no scope; subscribe on incoming raids to our channel.
         await self._safe_listen("raid",
             self._eventsub.listen_channel_raid(self._on_raid, to_broadcaster_user_id=b))
+
+    async def _first_user(self, **kw):
+        """First user from Twitch.get_users() (an async generator in twitchAPI 4.x)."""
+        async for u in self._twitch.get_users(**kw):
+            return u
+        return None
 
     async def _safe_listen(self, label: str, coro) -> None:
         """Await one listen_* call; log+skip on failure (e.g. missing scope)."""
