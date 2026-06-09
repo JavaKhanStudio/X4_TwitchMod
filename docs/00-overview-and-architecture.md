@@ -112,4 +112,22 @@ format is even cheaper if we hit performance/robustness issues. Revisit in build
    don't need to write a C++ lib (LuaSocket already gives us the native seam).
 6. `06-ecosystem-survey.md` — **verified, decision-oriented survey** of the whole modding
    tooling/library ecosystem; the resolved architecture and why. **Read this.**
-7. `references.md` — every source URL, the link bank.
+7. `07-live-bringup-checklist.md` — the hands-on checklist for first light once X4 is installed.
+8. `08-viewer-economy-and-events.md` — the **gameplay-design layer**: viewer wallet & coin
+   distribution, the karma governor, the `!buy` store, the 4 severity tiers + X4 event
+   catalog, and voting/democracy mode. Ported from TwitchToolkit, adapted to X4. (Docs 00–07
+   are *how Twitch reaches X4*; doc 08 is *what viewers can do once it does*.)
+9. `09-onboarding-oauth-and-companion-ux.md` — the **end-user experience**: where the Twitch
+   OAuth login happens, the companion-app setup screen, the in-game "Enable Twitch" toggle, and
+   why (unlike the RimWorld mod) the Twitch side can't live inside the game. **Read this for the
+   product/UX intent.**
+10. `references.md` — every source URL, the link bank.
+
+> **Why a companion app at all (vs the RimWorld mod that inspired this)?** TwitchToolkit was C#
+> with full .NET, so it did Twitch *inside* RimWorld. X4's mod sandbox (§2) has **no network**,
+> so the Twitch connection + OAuth must live in a small external companion process. The in-game
+> UI stays the control surface; the companion holds the secrets. Full UX in doc 09.
+
+> **STATUS (2026-06-09): Milestone 1 — the socket bridge — is proven working live on X4 8.00
+> native Linux** (bidirectional round-trip; see doc 07 Track C). The hardest unknown is retired;
+> remaining work is features (economy doc 08, onboarding doc 09), not plumbing risk.

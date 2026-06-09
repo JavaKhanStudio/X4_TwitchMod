@@ -69,9 +69,8 @@ class TwitchSource(Source):
                 "twitchAPI not installed. `pip install -r requirements.txt` "
                 "(uncomment twitchAPI). Or use --source stdin."
             ) from _IMPORT_ERROR
-        for key in ("client_id", "client_secret"):
-            if not getattr(config, key):
-                raise RuntimeError(f"TWITCH_{key.upper()} is required for --source twitch")
+        # No creds required up front: the companion starts IDLE and the user
+        # connects from the dashboard (the OAuth button). Env creds auto-connect.
         self.config = config
         self._queue: asyncio.Queue[dict] = asyncio.Queue()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -79,6 +78,65 @@ class TwitchSource(Source):
         self._eventsub = None
         self._broadcaster_id: str | None = None
         self._bot_id: str | None = None
+        # connection state for the dashboard
+        self.connected = False
+        self.connecting = False
+        self.login: str | None = None
+        self.error: str | None = None
+        self._status_cb = None
+
+    def set_status_cb(self, cb) -> None:
+        """Register a callback invoked (no args) whenever the connection state changes."""
+        self._status_cb = cb
+
+    def _notify(self) -> None:
+        if self._status_cb:
+            try:
+                self._status_cb()
+            except Exception:  # noqa: BLE001 - status must never break the source
+                pass
+
+    def state(self) -> dict:
+        # client_id is semi-public (prefill convenience); the SECRET is never exposed.
+        return {"connected": self.connected, "connecting": self.connecting,
+                "login": self.login, "channel": self.config.channel,
+                "client_id": self.config.client_id, "error": self.error}
+
+    async def connect(self, client_id: str, client_secret: str, channel: str = "") -> bool:
+        """Authenticate + subscribe (the OAuth flow). Returns success. Safe to call
+        from the dashboard via run_coroutine_threadsafe on the bridge loop."""
+        if self.connecting:
+            return False
+        self.config.client_id = client_id.strip()
+        self.config.client_secret = client_secret.strip()
+        self.config.channel = (channel or "").strip()
+        if not self.config.client_id or not self.config.client_secret:
+            self.error = "Client ID and Secret are required."
+            self._notify()
+            return False
+        self.connecting = True
+        self.error = None
+        self._notify()
+        try:
+            await self._teardown()
+            await self._setup()  # bind() opens the browser on first run
+            self.connected = True
+            await self._queue.put(protocol.ready())
+            return True
+        except Exception as e:  # noqa: BLE001 - surface to the UI, don't crash
+            self.error = str(e)
+            self.connected = False
+            log.warning("connect failed: %s", e)
+            return False
+        finally:
+            self.connecting = False
+            self._notify()
+
+    async def disconnect(self) -> None:
+        await self._teardown()
+        self.connected = False
+        self.login = None
+        self._notify()
 
     def _emit(self, msg: dict) -> None:
         """Enqueue from an EventSub callback. Thread-safe: callbacks may run on a
@@ -110,6 +168,8 @@ class TwitchSource(Source):
             self._broadcaster_id = chan[0].id
         else:
             self._broadcaster_id = self._bot_id  # default: our own channel
+        self.login = me[0].login
+        self._notify()
         log.info("authenticated as %s; broadcaster=%s", me[0].login, self._broadcaster_id)
 
         self._eventsub = EventSubWebsocket(self._twitch)
@@ -179,8 +239,11 @@ class TwitchSource(Source):
     # ---- Source interface --------------------------------------------------
 
     async def events(self) -> AsyncIterator[dict]:
-        await self._setup()
-        await self._queue.put(protocol.ready())  # tell X4 we're live
+        self._loop = asyncio.get_running_loop()
+        # Env creds (or persisted ones loaded into config) auto-connect; otherwise
+        # we idle until the dashboard's Connect button calls connect().
+        if self.config.client_id and self.config.client_secret:
+            await self.connect(self.config.client_id, self.config.client_secret, self.config.channel)
         while True:
             yield await self._queue.get()
 
@@ -199,11 +262,19 @@ class TwitchSource(Source):
         except Exception as e:  # noqa: BLE001
             log.warning("[twitch] send_chat_message failed: %s", e)
 
-    async def aclose(self) -> None:
+    async def _teardown(self) -> None:
         if self._eventsub is not None:
             try:
                 await self._eventsub.stop()
             except Exception:  # noqa: BLE001
                 pass
+            self._eventsub = None
         if self._twitch is not None:
-            await self._twitch.close()
+            try:
+                await self._twitch.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._twitch = None
+
+    async def aclose(self) -> None:
+        await self._teardown()

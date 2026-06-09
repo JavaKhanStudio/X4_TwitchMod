@@ -38,45 +38,79 @@ Legend: `<X4>` = the X4 install dir (Steam Linux: usually
 
 ## Track B — X4 half (needs the game)
 
-- [ ] **Install X4** via Steam. Properties → Compatibility: **NOT** forced to Proton
-      (native Linux). Launch once so `~/.config/EgoSoft/X4/` is created.
-- [ ] **Install LuaSocket for Lua 5.1:** `sudo dnf install lua5.1-socket`
-      (must be **5.1**, not 5.4). Note where `core.so` + `unix.so` land (e.g.
-      `/usr/lib64/lua/5.1/socket/`).
-- [ ] **Install the bekopharm Mod Support APIs (linux-compat):**
-      ```bash
-      git clone -b linux-compat https://github.com/bekopharm/x4-projects
-      cp -r x4-projects/extensions/sn_mod_support_apis "<X4>/extensions/"
-      ```
-      (SN API ≥ 1.93.)
-- [ ] **Copy the socket `.so`s into the game lua path** — follow the fork's
-      [Quick-manual](https://github.com/bekopharm/x4-projects/wiki/Quick-manual) for the exact
-      target (`game/ui/core/lualibs/` *or*
-      `extensions/sn_mod_support_apis/ui/c_library/socket/`). **Copy, do not symlink**
-      (X4 ≥7.x rejects symlinks).
-- [ ] **Install our mod:** `cp -r extensions/twitch_integration "<X4>/extensions/"`
-- [ ] **In-game settings:** Extensions → **disable Protected UI Mode**; enable both
-      extensions. In the Named Pipes API options set **"Pipe Prefix Linux"** to `<SAVE>/`.
-- [ ] **Restart X4, load a save.** Confirm the socket appeared: `ls <SAVE>/` → a socket
-      file for pipe name `twitch` (note its exact name).
-- [ ] **Raw transport check (no bridge yet):** `nc -U <SAVE>/<socketfile>` — should connect.
+> **DONE on this machine (2026-06-09) — all filesystem prep complete.** Concrete facts:
+> - `<X4>` = `<X4-install-dir>`. Confirmed
+>   **native ELF, X4 8.00** (version.dat = `800`), not Proton.
+> - `<SAVE>` = `~/.config/EgoSoft/X4/<id>/save/` (per-user numeric id — the fork
+>   auto-detects it via `C.GetSaveFolderPath()`; the bridge globs for it).
+> - Socket file will be **`<SAVE>/twitch.xml`** (pipe name in our MD is `twitch`; the fork
+>   names the socket `<name>.xml`). The bridge default now resolves to exactly this.
+> - LuaSocket libs were extracted **without root** (`dnf download lua5.1-socket` +
+>   `rpm2cpio | cpio`) and copied to `<X4>/extensions/sn_mod_support_apis/ui/c_library/socket/`
+>   (a `.gitkeep` there confirms that's the expected drop spot — `require("socket.core")`
+>   resolves via the cpath the fork prepends).
+> - bekopharm `sn_mod_support_apis` installed (its content id is **`ws_2042901274`**, ver 191).
+> - Our mod installed. **Four bugs the real source exposed were fixed:** (1) bridge socket
+>   filename `x4_twitch.xml` → `twitch.xml`; (2) save-dir hard-coded → autodiscovered;
+>   (3) our `<dependency id="sn_mod_support_apis">` → **`ws_2042901274`** (deps match the
+>   content *id*, not the folder — every SN companion mod uses this); (4) our `ui.xml` was at
+>   `ui/ui.xml` with a bare `<file name="twitch_integration"/>` → moved to the extension
+>   **root** with `<file name="ui/twitch_integration.lua"/>` (matches the fork's own ui.xml).
+>
+> **What's LEFT (needs the game running + your hands in the GUI):** the three steps below.
+
+- [x] **Install X4** native (confirmed 8.00, not Proton).
+- [x] **LuaSocket 5.1** extracted (no root) + dropped into `c_library/socket/`.
+- [x] **bekopharm Mod Support APIs (linux-compat)** installed. **Our mod** installed.
+- [ ] **In-game settings (YOU):** Extensions menu → **disable Protected UI Mode**; enable
+      both `Mod Support APIs` and `Twitch Integration`. (No need to set "Pipe Prefix Linux" —
+      the fork auto-points it at `<SAVE>`.)
+- [ ] **Restart X4, load a save (YOU).** Then confirm the socket appeared:
+      `ls -l ~/.config/EgoSoft/X4/<id>/save/twitch.xml`
+- [ ] **Raw transport check (no bridge yet):**
+      `nc -U ~/.config/EgoSoft/X4/<id>/save/twitch.xml` — should connect (Ctrl-C to exit).
 - [ ] **Turn on script debug** so our `<debug_text>` shows: launch X4 with
       `-debug all -logfile debuglog.txt`, then `tail -f "<X4>/debuglog.txt"` (path varies).
 
 ---
 
-## Track C — Join them (the moment of truth)
+## Track C — Join them (the moment of truth)  ✅ DONE 2026-06-09
 
-- [ ] **Point the bridge at the real socket:**
+**Milestone 1 COMPLETE — bidirectional socket round-trip proven on X4 8.00 native Linux.**
+The probe `bridge/tools/socket_roundtrip.py` connected to the live `…/save/twitch.xml`, sent
+`{"t":"cmd","id":"ping"}`, and the debug log showed the full chain:
+```
+New connection … for twitch          → X4 accepted the client
+Read 40 characters from client        → X4 received the ping
+Twitch_OnPing: [Twitch] ping: {…}     → JSON decoded, correct cue fired
+Wrote 24 characters to client         → X4 sent {"t":"say","msg":"pong"} back
+```
+and the probe printed `<- {"t":"say","msg":"pong"}  RESULT: round-trip OK ✅`. **The entire
+networking risk of the project is retired.** (Used a one-shot probe, not the real bridge, to
+isolate the transport; the production bridge run is the next step below.)
+
+- [x] Socket round-trips both directions via the Named Pipes MD API on native Linux.
+- [ ] **Run the REAL bridge** against live X4 (confirm the production code path):
       ```bash
-      python -m twitch_bridge --source twitch --socket <SAVE>/<socketfile>
+      cd bridge && python -m twitch_bridge --source stdin   # socket auto-discovered (config.py)
       ```
-      (If the fork's socket name ≠ our default `x4_twitch.xml`, either pass `--socket` to
-      match, or change the pipe name `'twitch'` in `md/Twitch_Integration.xml`.)
-- [ ] **End-to-end:** `!ping` in chat → debug log shows `[Twitch] ping: ...` **and** `pong`
-      appears in your Twitch chat. 🎉
-- [ ] **First real effect:** replace the `TODO` in `Twitch_OnSpawn` with an actual ship
-      spawn, then `!spawn fighter` (as a mod) → ship appears.
+      then type a fake command; watch the debug log for `[Twitch] …`. (`--source twitch` once
+      Twitch creds are set — see **doc 09** for the real onboarding/OAuth UX, not this console.)
+- [ ] **First real effect:** replace the `TODO` in `Twitch_OnSpawn` with an actual ship spawn,
+      then drive `!spawn fighter` → ship appears.
+- [ ] **In-game "Enable Twitch" toggle + status panel** via Simple Menu API (doc 08 M4.3 /
+      doc 09 §4) — the UI surface the streamer actually uses.
+
+### Bug ledger — six issues only the live game exposed (all fixed)
+1. Bridge socket filename `x4_twitch.xml` → **`twitch.xml`** + autodiscover the numeric save dir.
+2. content.xml dependency `id="sn_mod_support_apis"` → **`ws_2042901274`** (deps match content
+   *id*, not folder; every SN companion mod uses this).
+3. `ui.xml` at `ui/ui.xml` → extension **root**, and `<file name="ui/twitch_integration.lua"/>`.
+4. **Protected UI Mode** must be OFF (else `package` is nil + non-whitelisted `require` blocked).
+5. MD filename `Twitch_Integration.xml` → **lowercase** `twitch_integration.xml` (X4's Linux
+   VFS lowercases paths; capitalized files aren't found on a case-sensitive disk). *The unlock.*
+6. Read started on `event_game_started` (too early) → **`md.Named_Pipes.Reloaded`**; and X4 pipe
+   writes have **no trailing newline** → append `'\n'` in `Twitch_Say`.
 
 ---
 

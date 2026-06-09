@@ -34,6 +34,10 @@ SAY = "say"            # post a message to chat (Helix)
 ACTION = "action"      # generic future action (ban, shoutout, ...)
 HELLO = "hello"        # handshake from X4 on connect
 
+# companion <-> X4 (status panel + the in-game Enable-Twitch toggle; doc 09 §6)
+STATUS = "status"      # companion -> X4: connection / viewer-count for the in-game panel
+CONTROL = "control"    # X4 -> companion: enable / disable / connect (with creds)
+
 
 def encode(msg: dict[str, Any]) -> bytes:
     """Serialize one message to a single UTF-8 line (with trailing newline)."""
@@ -83,6 +87,30 @@ def ready() -> dict[str, Any]:
     return {"t": READY}
 
 
-def command(action: str, by: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
-    """A vetted game action (post-policy). `action` is the id X4 dispatches on."""
-    return {"t": COMMAND, "id": action, "by": by, "args": args or {}}
+def command(action: str, by: str, args: dict[str, Any] | None = None,
+            tier: int | None = None) -> dict[str, Any]:
+    """A vetted game action (post-policy). `action` is the id X4 dispatches on.
+    `tier` (0..3, doc 08 §5) lets MD apply shared severity-aware safety."""
+    msg: dict[str, Any] = {"t": COMMAND, "id": action, "by": by, "args": args or {}}
+    if tier is not None:
+        msg["tier"] = tier
+    return msg
+
+
+# ---- constructors (X4 -> chat, and companion status) ------------------------
+
+def say(msg: str) -> dict[str, Any]:
+    """Ask the bridge to post `msg` to Twitch chat (via the source / Helix)."""
+    return {"t": SAY, "msg": msg}
+
+
+def status(*, connected: bool, channel: str = "", viewers: int = 0,
+           x4: bool = False) -> dict[str, Any]:
+    """Companion -> X4: drive the in-game status panel (doc 09 §6)."""
+    return {"t": STATUS, "connected": connected, "channel": channel,
+            "viewers": viewers, "x4": x4}
+
+
+def control(action: str, **fields: Any) -> dict[str, Any]:
+    """X4 -> companion: 'enable' | 'disable' | 'connect' (with creds in fields)."""
+    return {"t": CONTROL, "action": action, **fields}

@@ -11,8 +11,19 @@ def _default_socket() -> str:
     # The bekopharm linux-compat fork hosts the Unix socket in the X4 savegame
     # folder (the only dir X4 Lua can unlink). A `.xml` extension lets X4 clean
     # it up itself. See docs/06-ecosystem-survey.md.
-    base = Path.home() / ".config" / "EgoSoft" / "X4" / "save"
-    return str(base / "x4_twitch.xml")
+    #
+    # The filename is the MD pipe NAME ("twitch" in md/Twitch_Integration.xml) +
+    # ".xml" — the fork strips any Windows pipe path and uses <name>.xml. The save
+    # dir lives under a per-user numeric id (e.g. .../X4/<id>/save), which the
+    # fork auto-detects via C.GetSaveFolderPath(); we glob for it so no hard-coded id.
+    egosoft = Path.home() / ".config" / "EgoSoft" / "X4"
+    candidates = sorted(
+        (p for p in egosoft.glob("*/save") if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    base = candidates[0] if candidates else (egosoft / "save")
+    return str(base / "twitch.xml")
 
 
 @dataclass
@@ -23,6 +34,16 @@ class Config:
     source: str = field(default_factory=lambda: os.environ.get("X4_TWITCH_SOURCE", "stdin"))
     # Reconnect backoff to the X4 socket, seconds.
     reconnect_delay: float = 1.0
+
+    # --- Companion dashboard (the cute status UI) ---
+    dashboard: bool = field(default_factory=lambda: os.environ.get("X4_TWITCH_DASHBOARD", "1") != "0")
+    dashboard_port: int = field(default_factory=lambda: int(os.environ.get("X4_TWITCH_DASHBOARD_PORT", "17564")))
+    open_browser: bool = field(default_factory=lambda: os.environ.get("X4_TWITCH_OPEN", "0") == "1")
+
+    # --- Viewer economy (wallet + karma + !buy store; doc 08) ---
+    economy: bool = field(default_factory=lambda: os.environ.get("X4_TWITCH_ECONOMY", "1") != "0")
+    wallet_path: str = field(default_factory=lambda: os.environ.get(
+        "X4_TWITCH_WALLET", str(Path.home() / ".config" / "x4-twitch-bridge" / "viewers.json")))
 
     # --- Twitch (only used by the real source; see sources/twitch.py) ---
     channel: str = field(default_factory=lambda: os.environ.get("TWITCH_CHANNEL", ""))

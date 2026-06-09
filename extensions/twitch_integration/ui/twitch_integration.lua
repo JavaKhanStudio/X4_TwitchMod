@@ -146,6 +146,13 @@ local function onDecode(_, line)
   signal_md(control, line)
 end
 
+-- NOTE: in-game process spawn via FFI is NOT possible. X4 restricts dangerous
+-- FFI calls even with Protected UI off — `ffi.C.system` returns "Access to FFI
+-- function 'system' is restricted!" and `ffi.load("c")` is blocked (verified live
+-- 2026-06-09). Engine functions (GetSaveFolderPath etc.) are whitelisted, but libc
+-- is not. The companion is therefore launched OUTSIDE the game (Steam launch-option
+-- wrapper, or a future native Lua C module). See docs/09 + DEVLOG.
+
 -- ---- init ------------------------------------------------------------------
 
 local function init()

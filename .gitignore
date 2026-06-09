@@ -1,17 +1,67 @@
-# Python
+# =====================================================================
+#  PUBLIC REPO — keep secrets, tokens, and personal data OUT.
+#  See SECURITY.md for the content-leak policy and pre-commit checklist.
+#  NOTE: .gitignore has NO inline comments — keep every comment on its own line.
+# =====================================================================
+
+# --- Secrets / credentials (NEVER commit) ---
+tokens.json
+*token*.json
+.env
+.env.*
+*.local
+secrets*
+*secret*
+*.pem
+*.key
+*.p12
+credentials*
+oauth*.json
+
+# per-viewer wallet/karma state (PII: usernames)
+viewers.json
+# the companion's Twitch app credentials (client id/secret/channel)
+setup.json
+
+# --- Runtime / IPC artifacts ---
+*.sock
+# the live Unix sockets X4 hosts in the savegame folder
+twitch.xml
+x4_python_host.xml
+# temporary FFI spawn test marker
+x4_ffi_spawn_proof
+
+# --- X4 / game data (large + personal) ---
+# savegames
+*.xml.gz
+# debug logs may contain usernames / chat / paths
+debuglog*.txt
+crash_debug.log
+*.cat
+*.dat
+# never vendor compiled libs into the repo
+*.so
+*.dll
+
+# --- Python ---
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+env/
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
 
-# Secrets / runtime
-tokens.json
-*.sock
-/bridge/.env
+# --- Node (if a companion web UI lands here) ---
+node_modules/
+dist/
+build/
+*.log
 
-# Editor/OS
+# --- Editor / OS ---
 .vscode/
 .idea/
 *.swp
+*~
 .DS_Store

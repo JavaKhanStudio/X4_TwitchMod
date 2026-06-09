@@ -1,0 +1,152 @@
+# Dev Log
+
+Chronological engineering log — decisions, milestones, and the bugs we hit, in the repo so
+they're versioned and auditable (not just in a private assistant's memory). Newest first.
+Reference docs (`00`–`09`) hold the durable detail; this log is the narrative + dates.
+
+**Content rule:** public repo — no secrets, no personal paths/IDs. Use `<X4>`, `<SAVE>`,
+`<id>` placeholders. See `SECURITY.md`.
+
+---
+
+## 2026-06-09 — Repo hygiene for going public
+- Hardened `.gitignore` (tokens, `viewers.json`, saves, `debuglog`, sockets, `*.so`, `*secret*`).
+- Added `SECURITY.md` — content-leak policy + pre-commit checklist.
+- Sanitized PII out of source/docs (home paths, the X4 numeric user-id) → placeholders; made
+  the Lua spawn-proof derive the save dir via `GetSaveFolderPath()` instead of a hardcoded path
+  (also makes it portable to a second test machine).
+- **This file is now where project notes live.**
+
+## 2026-06-09 — Companion OAuth setup panel (the RimWorld-like Connect button) ✅
+Built the one-click Twitch onboarding in the companion dashboard.
+- `setup_store.py` — persists the Twitch app creds (client id/secret/channel) to a gitignored,
+  chmod-600 `~/.config/x4-twitch-bridge/setup.json` (tokens stay separate). `tools/test_setup.py`.
+- `sources/twitch.py` — now starts **idle** (no creds required up front) with a runtime
+  `connect(id, secret, channel)` / `disconnect()` + connection state (`connected`/`connecting`/
+  `login`/`error`) and a status callback. Env creds still auto-connect (backward compatible).
+- `dashboard.py` — a **① Connect to Twitch** panel: 3 clear steps (create app + redirect URL,
+  paste creds, authorize), a form + Connect button → `POST /api/connect`. Shows when the twitch
+  source is idle; flips to "connected as <login>" when live. Twitch state added to `/api/status`.
+- `app.py` — loads persisted creds (auto-connect), mirrors source state into the dashboard, and
+  routes the Connect button to `source.connect()` across the thread boundary via
+  `run_coroutine_threadsafe`. `run-companion.sh` now defaults to `--source twitch`.
+- Verified: setup_store + POST plumbing unit-tested; idle source constructs w/o creds; **Playwright
+  screenshot confirms the panel renders** (3 steps + Connect button). Full suite green.
+- **Live-gated (the user's next test):** the actual OAuth browser flow + EventSub (real Twitch).
+
+## 2026-06-09 — Autonomous build: full bridge-side economy + views ✅
+Built M3.5 + M3.6 + the M4.0 bridge half + the item-list view in one pass — all headless,
+all tested, nothing in the live-game/Twitch path touched.
+- `wallet.py` — `Wallet` + `Viewer` + `EconomySettings` + `new_karma`: persistent `viewers.json`
+  (atomic), starting balance/karma, coins, the award loop (karma × role × activity-decay), the
+  karma governor (good/neutral/bad/doom curve, clamped). `tools/test_wallet.py`.
+- `economy.py` — `Economy.handle_chat`: the `!buy` pipeline (resolve → cost incl. variable →
+  role → coins → karma-type cap → per-event cooldown/cap → debit + karma + vetted `cmd` w/ tier +
+  confirmation say), plus `!balance`/`!karma`/`!shop`/`!gift` and mod admin. `tools/test_economy.py`.
+- `protocol.py` — added `say`/`status`/`control` constructors + `tier` on `command`.
+- `app.py` — wired wallet+economy: award timer task, chat routed through economy AND the command
+  engine (disjoint), a `dispatch()` that sends `say`→chat / `cmd`→X4; wallet saved on tick/shutdown.
+  `--no-economy` / `--wallet` flags; smoke test opts out.
+- `dashboard.py` — Economy card (viewers/coins) on the status page + a **`/catalog` item-list**
+  page (search, tier filters, sort) backed by `/api/catalog` (= `catalog_view()`). The local twin
+  of TT's item-list. **Playwright-verified with screenshots** (status + catalog).
+- Suite: 9 test modules + smoke + playwright, ALL GREEN. Left for the live loop: MD cues + real
+  X4 effects per catalog event, live Twitch OAuth, and the in-game Enable-Twitch panel.
+
+## 2026-06-09 — StoreEvent schema locked in (catalog.py stub)
+- Added the forward economy schema to `bridge/twitch_bridge/catalog.py` so a future session
+  inherits the shape: `StoreEvent` dataclass (id, buy_key, cost/cost_per_unit+unit, karma, tier,
+  cooldown, event_cap, on_event/reward, args, label/description/category, default_enabled/enabled)
+  + `TIERS`/`KARMA` constants + `.display()` (the item-list projection) + `catalog_view()` (what
+  `/catalog` and the export emit) + a representative `CATALOG` (all 4 tiers, fixed+variable cost,
+  event-triggered). **Additive — the live `STARTER`/`CommandEngine` path is untouched**; the
+  `!buy` dispatcher + coin/karma gating are still M4.0. Tested (`tools/test_catalog.py`, 28 checks);
+  full suite green. Schema will evolve, but "rich record → many projections" is fixed.
+
+## 2026-06-09 — Catalog as single source of truth + the "item-list" view (noted)
+- Studied TwitchToolkit's **item-list** (`github.com/twitchtoolkit/item-list`): a static GitHub
+  Pages site (Bootstrap + List.js) that renders flat JSON catalog data (`{abr, price, karmatype,
+  category}`) as searchable/sortable tables, shared with viewers as a link. Data cleanly split
+  from presentation — a great, simple pattern.
+- **Design rule recorded in `docs/08` §10:** our `catalog.py` `StoreEvent` is ONE source of truth
+  that must carry display metadata (label, description, category, tier, karma, cost/syntax,
+  cooldown) so the SAME data drives the `!buy` engine AND any view. No second catalog.
+- **Two surfaces, one schema:** a live local `/catalog` page on the companion dashboard server
+  (enabled-only, current prices/cooldowns) + a shareable static export (the online TT twin, the
+  `!purchaselist` link). Same JSON → same page code renders either. Slots into M4.0/M4.3.
+
+## 2026-06-09 — Dashboard fix: survive source EOF (was: connection refused)
+- Bug: a manually-started companion exited the instant its stdin source hit EOF, tearing down
+  the dashboard → `ERR_CONNECTION_REFUSED`. Fix: when the dashboard is on, the process lingers
+  (X4 link keeps retrying, UI shows source state) until Ctrl-C; tests pass `--no-dashboard` and
+  keep the old exit-on-EOF behaviour. Launcher also made interpreter-robust (python3/python).
+  Verified: after `</dev/null`, `GET /` → 200.
+
+## 2026-06-09 — Companion dashboard (the "cute little UI") — BUILT ✅
+A self-contained status UI for the companion, **stdlib only**, served as a localhost web page
+(cross-platform, no GUI toolkit, reuses a browser tab; opens itself with `--open`).
+- `status.py` — thread-safe `Status`: Twitch source state, X4 link state, counters
+  (events in / commands / say-out), a newest-first activity feed, uptime, last error.
+- `dashboard.py` — `ThreadingHTTPServer` in a daemon thread; embedded dark-theme HTML that
+  polls `/api/status` every 1s with live dots + activity feed. Binds `127.0.0.1:17564`.
+- Wired into `app.py` (records events/commands/actions; a poller mirrors the X4 link state)
+  with `--no-dashboard` / `--dashboard-port` / `--open` flags and `X4_TWITCH_*` env vars.
+- **Manual start option:** `bridge/run-companion.sh` (opens the UI). The other start path is
+  the Steam launch wrapper. Both supported — per "give an option to start it manually."
+- Tests: `tools/test_dashboard.py` (13 checks) + live-verified against the real bridge
+  process (GET / and /api/status → 200). Full existing suite still green.
+
+## 2026-06-09 — In-game process spawn via FFI — ❌ BLOCKED by X4 (tested, ruled out)
+- **Hypothesis (wrong):** the mod could auto-launch the companion via LuaJIT FFI → libc
+  `system()`, the same seam native mods use. We tested it directly.
+- **Result:** X4 **restricts dangerous FFI calls even with Protected UI off.** Live error:
+  `Access to FFI function 'system' is restricted!`, and `ffi.load("c")` / `ffi.load("libc.so.6")`
+  are blocked too. Engine functions (`GetSaveFolderPath`, etc.) are whitelisted; libc is not.
+  Lesson: the FFI "seam" is real but **guarded** — the multiplayer mod escapes it by shipping
+  its *own* native lib (loaded via the Lua C-module path like LuaSocket), whose internal C is
+  not subject to the whitelist. Plain `ffi.C.system` from Lua is a dead end.
+- **Action:** removed the FFI spawn code from `ui/twitch_integration.lua` (kept a NOTE).
+- **New direction for auto-start (no in-game spawn, no native code):** a **Steam launch-option
+  wrapper** — `companion-launcher.sh %command%` co-launches the companion (single-instance
+  guarded) and then X4. One-time paste in Steam → Launch Options (same place as the debug flag).
+  Optional future: a tiny native Lua C `spawn` module (auditable source) for a no-launch-option
+  experience, but that reintroduces the per-platform native build we deliberately avoided.
+- **Testing-loop automation (deferred):** Wayland box, no input tools installed, X4 has no
+  load-save launch arg. Can launch X4 + verify loads via the shared `<SAVE>/twitch.xml` signal
+  without vision, but can't navigate the menu. Plan: install `xdotool`, script launch →
+  "Continue" → poll for the socket. Fully headless impossible (Vulkan game needs GPU+display).
+
+## 2026-06-09 — 🎉 Milestone 1 COMPLETE: bidirectional socket bridge proven live (X4 8.00)
+The hardest, least-documented risk of the whole project — getting a socket open between
+native-Linux X4 and an external process — is **retired**. `tools/socket_roundtrip.py` sent a
+`ping` into the live `<SAVE>/twitch.xml`; X4 accepted the client, decoded the JSON, fired the
+right MD cue, and wrote `{"t":"say","msg":"pong"}` back, which the probe printed. Full detail +
+log in `docs/07` Track C.
+
+**Six bugs only the live game exposed (all fixed):**
+1. Bridge socket filename `x4_twitch.xml` → `twitch.xml` + autodiscover the `<id>` save dir.
+2. content.xml dependency `id="sn_mod_support_apis"` → **`ws_2042901274`** (X4 matches the
+   dependency's content *id*, not the folder name; every SN companion mod uses this).
+3. `ui.xml` belongs at the **extension root**, with `<file name="ui/<name>.lua"/>` (full path).
+4. **Protected UI Mode** must be OFF (else Lua `package` is nil + non-whitelisted `require` blocked).
+5. MD filename must be **lowercase** (`twitch_integration.xml`) — X4's Linux VFS lowercases
+   paths, so a capitalized file isn't found on a case-sensitive disk. *The main unlock.*
+6. Start the read on **`md.Named_Pipes.Reloaded`** (not `event_game_started`, which is too
+   early); and X4 pipe writes have **no trailing newline** → append `'\n'` in `Twitch_Say`.
+
+## 2026-06-09 — X4 installed; filesystem bring-up
+- Confirmed native ELF **X4 8.00**, not Proton. Installed bekopharm `linux-compat`
+  `sn_mod_support_apis` + our mod into `<X4>/extensions/`. LuaSocket 5.1 obtained without root
+  (`dnf download` + `rpm2cpio | cpio`) into `c_library/socket/`. Details: `docs/07` Track B.
+
+## 2026-06-09 — Knowledge base: design layers added
+- **`docs/08`** — viewer economy & events, ported from RimWorld's TwitchToolkit (coin wallet,
+  karma governor, `!buy` store, 4 severity tiers, voting). Two-axis model (severity × karma)
+  improves on TT's single field.
+- **`docs/09`** — onboarding/OAuth/companion UX: why Twitch can't live fully in-game (sandbox
+  has no network, unlike RimWorld's C# mod), where OAuth happens, the in-game-setup primary flow.
+
+## (pre-2026-06-09) — Architecture resolved; bridge + mod scaffolded
+See `docs/00`–`06`: native-Linux + LuaSocket path, Unix-domain socket in the savegame folder,
+Python `twitchAPI` bridge, newline-JSON line protocol, command/policy engine. Milestones 2–3
+scaffolded and headless-tested before the game was installed.

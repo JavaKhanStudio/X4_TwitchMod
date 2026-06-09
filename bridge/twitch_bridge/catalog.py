@@ -1,14 +1,34 @@
-"""Starter command catalog — EDIT THIS to define what viewers can do.
+"""Catalog — what viewers can do.
 
-This is a *starting point*, deliberately conservative (the one freeform spawn is
-mod-gated). Each Command's `action` is the id the X4 side dispatches on; add a
-matching cue in extensions/twitch_integration/md/Twitch_Integration.xml.
+Two layers live here:
+
+1. `STARTER` — the **current runtime** catalog: a list of `Command`s the live
+   `CommandEngine` already consumes (chat-prefix / event triggers + cooldowns +
+   roles). This is what actually works today.
+
+2. `StoreEvent` + `CATALOG` — the **forward economy schema** (doc 08, esp. §5 and
+   §10). One `StoreEvent` is the single source of truth that must drive BOTH the
+   `!buy` purchase engine (M4.0) AND the browsable item-list view (`/catalog` +
+   the shareable export). It carries display metadata so the same record renders
+   as a viewer-facing list — never a second catalog to keep in sync.
+
+   This is intentionally a *stub* so the structure is locked in and a future
+   session won't invent a different shape. It is NOT wired into the engine yet:
+   the coin/karma wallet (M3.5/3.6) and the `!buy` dispatcher (M4.0) come first.
+   Fields will evolve, but the shape — rich record, many projections — should not.
 
 Roles: everyone < subscriber < vip < moderator < broadcaster.
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
 from .commands import Command
 
+# ---------------------------------------------------------------------------
+# 1. Current runtime catalog (live; consumed by CommandEngine today)
+# ---------------------------------------------------------------------------
 STARTER = [
     # chat commands ---------------------------------------------------------
     Command(id="ping", action="ping",
@@ -34,3 +54,126 @@ STARTER = [
     Command(id="cheer_boost", action="cheer_boost",
             on_event="cheer", cooldown=5.0),     # args carry {bits}
 ]
+
+
+# ---------------------------------------------------------------------------
+# 2. Forward economy schema (doc 08) — single source of truth for engine + views
+# ---------------------------------------------------------------------------
+
+# Severity tier = the streamer's "experience dial" (doc 08 §5). Orthogonal to karma.
+TIERS = {0: "Pure Interaction", 1: "Minor Distraction", 2: "Major Distraction", 3: "Doom"}
+# Reputation effect on the buyer's karma (doc 08 §3).
+KARMA = ("good", "neutral", "bad", "doom")
+
+
+@dataclass
+class StoreEvent:
+    """One purchasable/trigger-able thing — drives the engine AND the item-list."""
+
+    # --- identity / runtime (drives the !buy engine; M4.0) ---
+    id: str                          # internal action id = the MD cue X4 fires
+    buy_key: str                     # the `!buy <key>` abbreviation (TT's "abr")
+
+    # --- economy (doc 08 §3-4) ---
+    cost: int = 0                    # fixed coin cost (0 + cost_per_unit => variable)
+    cost_per_unit: int | None = None  # variable price = cost_per_unit * <unit arg>
+    unit: str | None = None          # which arg scales the price, e.g. "qty"
+    karma: str = "neutral"           # good | neutral | bad | doom (reputation effect)
+    cooldown: float = 0.0            # per-event re-buy cooldown, seconds
+    event_cap: int = 0               # max per rolling window (§3.1); 0 = uncapped
+    min_role: str = "everyone"       # optional role floor on top of the coin cost
+
+    # --- trigger (default: a `!buy <key>` purchase) ---
+    on_event: str | None = None      # if set, fires on this event instead of !buy (raid/sub/…)
+    reward: str | None = None        # for redeem-triggered: match this reward title
+    args: list[str] = field(default_factory=list)  # named args parsed from the !buy line
+
+    # --- display (drives the item-list view, doc 08 §10) ---
+    label: str = ""                  # human name (defaults to buy_key)
+    description: str = ""            # viewer-facing "what happens"
+    category: str = "Misc"           # grouping in the list view
+    tier: int = 0                    # 0 Pure / 1 Minor / 2 Major / 3 Doom (§5)
+
+    # --- lifecycle ---
+    default_enabled: bool = True     # ships enabled? (Major/Doom default False)
+    enabled: bool = True             # current streamer setting (runtime-overridable)
+
+    @property
+    def syntax(self) -> str:
+        """The chat usage string shown in the item-list / help."""
+        if self.on_event:
+            return f"(auto on {self.on_event})"
+        return " ".join(["!buy", self.buy_key] + [f"<{a}>" for a in self.args])
+
+    @property
+    def variable(self) -> bool:
+        return self.cost_per_unit is not None
+
+    def display(self) -> dict:
+        """The item-list projection (doc 08 §10): what /catalog + the export emit.
+        Display code consumes ONLY this dict, never the live object."""
+        return {
+            "buy_key": self.buy_key,
+            "label": self.label or self.buy_key,
+            "description": self.description,
+            "category": self.category,
+            "tier": self.tier,
+            "tier_name": TIERS.get(self.tier, "?"),
+            "karma": self.karma,
+            "syntax": self.syntax,
+            "cost": self.cost,
+            "cost_per_unit": self.cost_per_unit,
+            "unit": self.unit,
+            "cooldown": self.cooldown,
+            "event_cap": self.event_cap,
+            "enabled": self.enabled,
+        }
+
+
+# A representative spread (NOT the full catalog — see doc 08 §5.1). Enough to pin
+# the schema: fixed + variable cost, args, on_event triggers, all 4 tiers, karma,
+# default-off destructive tiers. Costs are first-draft (doc 08 §5.1).
+CATALOG: list[StoreEvent] = [
+    # Tier 0 — Pure Interaction (identity / flavour) ------------------------
+    StoreEvent(id="name_ship", buy_key="nameship", cost=120, karma="neutral", tier=0,
+               category="Identity", args=["name"],
+               label="Name a ship", description="Rename one of the player's ships."),
+    StoreEvent(id="adopt_ship", buy_key="adoptship", cost=200, karma="good", tier=0,
+               category="Identity",
+               label="Adopt a ship", description="A player ship is tagged as yours; chat is "
+               "pinged when it scores a kill or dies."),
+
+    # Tier 1 — Minor Distraction (survivable) -------------------------------
+    StoreEvent(id="pirate_harass", buy_key="pirate", cost=180, karma="bad", tier=1,
+               cooldown=120, event_cap=4, category="Combat",
+               label="Pirate harassment", description="One S/M pirate jumps in to annoy the "
+               "nearest player ship."),
+    StoreEvent(id="ware_drop", buy_key="ware", cost_per_unit=2, unit="qty", karma="good", tier=1,
+               args=["ware", "qty"], category="Gifts",
+               label="Gift wares", description="Drop wares near the player; price scales with qty."),
+
+    # Tier 2 — Major Distraction (a real moment; OFF by default) ------------
+    StoreEvent(id="khaak_swarm", buy_key="khaak", cost=900, karma="bad", tier=2,
+               cooldown=600, event_cap=2, default_enabled=False, enabled=False, category="Combat",
+               label="Kha'ak swarm", description="A cluster of Kha'ak fighters jumps in and attacks."),
+    StoreEvent(id="gift_ship", buy_key="giftship", cost=1500, karma="good", tier=2,
+               args=["class"], default_enabled=False, enabled=False, category="Gifts",
+               label="Gift a ship", description="Gift the player a ship (class sets the price band)."),
+
+    # Tier 3 — Doom (fleet/station-threatening; OFF, capped) ----------------
+    StoreEvent(id="xenon_k", buy_key="xenonk", cost=6500, karma="doom", tier=3,
+               cooldown=1800, event_cap=1, default_enabled=False, enabled=False, category="Doom",
+               label="Xenon K", description="A Xenon K destroyer jumps into the player's sector."),
+
+    # Event-triggered (not !buy) — fire on Twitch events --------------------
+    StoreEvent(id="reinforcements", buy_key="reinforcements", cost=0, karma="good", tier=1,
+               on_event="raid", category="Gifts",
+               label="Raid reinforcements", description="A raid sends friendly reinforcements, "
+               "scaled by raider count."),
+]
+
+
+def catalog_view(events: list[StoreEvent] | None = None, enabled_only: bool = True) -> list[dict]:
+    """The item-list projection served at `/catalog` and written by the export."""
+    items = events if events is not None else CATALOG
+    return [e.display() for e in items if e.enabled or not enabled_only]

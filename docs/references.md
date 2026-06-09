@@ -57,6 +57,16 @@ Every source backing this reference bank. Grouped by topic. (Researched 2026-06.
 - X4 Modding Tools update announcement: https://store.steampowered.com/news/app/392160/view/3646281279393578329
 - X4 Lua functions reference (gist): https://gist.github.com/NodusCursorius/b61f26177fdcb490d2456e353d57f363
 
+## Viewer-economy design reference (see doc 08)
+- **TwitchToolkit** (hodlhodl1132, RimWorld — DEPRECATED, concepts only, no live code): https://github.com/hodlhodl1132/twitchtoolkit
+  - The reference design for "viewers spend a watch-time currency to inject events." We port
+    the *economy concepts* (wallet, karma governor, store, voting), not the RimWorld events or
+    the dead IRC/`tmi-chatters` transport. Full mapping → X4 in `docs/08-viewer-economy-and-events.md`.
+- **TwitchToolkit item-list** (the buyable-catalog site): https://github.com/twitchtoolkit/item-list
+  - Static GitHub Pages site (Bootstrap + List.js) rendering JSON catalog data (`StoreEvents.json`,
+    `StoreItems.json`) as searchable/sortable tables — shared with viewers as a link. The model for
+    our local catalog view + shareable export. Schema/plan in `docs/08` §10.
+
 ## Twitch client libraries (for the Bridge)
 - Python `twitchAPI` (PyTwitchAPI): https://pytwitchapi.dev/ (PyPI: twitchAPI)
 - Node `@twurple`: https://twurple.js.org/

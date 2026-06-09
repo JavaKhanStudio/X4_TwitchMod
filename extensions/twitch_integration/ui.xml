@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Loads our Lua into X4's menu environment. MUST live at the extension ROOT
+  (extensions/twitch_integration/ui.xml), NOT under ui/. The <file> path is the
+  full relative path INCLUDING the .lua extension. Schema + conventions verified
+  against the bekopharm sn_mod_support_apis/ui.xml on a live X4 8.00 install
+  (2026-06-09). ui.xml loading is the modern, recommended path (the MD
+  Lua_Loader.Load event is legacy per the Lua Loader API docs).
+
+  Load order vs the SN APIs is guaranteed by our content.xml <dependency> on
+  ws_2042901274, so SN's globals exist before this file runs (though our lua only
+  uses Egosoft UI globals: RegisterEvent / AddUITriggeredEvent).
+-->
+<addon name="twitch_integration"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="../../core/coreaddon.xsd">
+  <environment type="menus">
+    <file name="ui/twitch_integration.lua" />
+  </environment>
+</addon>

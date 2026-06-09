@@ -1,0 +1,328 @@
+"""A tiny self-contained status dashboard for the companion.
+
+Serves one HTML page on localhost that polls a JSON status endpoint — no GUI
+toolkit, no external assets, stdlib only, cross-platform. Runs in a daemon
+thread so it never blocks the asyncio bridge.
+
+    Dashboard(status, port).start()  ->  http://127.0.0.1:<port>/
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from .catalog import catalog_view
+from .status import Status
+
+log = logging.getLogger("dashboard")
+
+PAGE = """<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>X4 ⇄ Twitch Companion</title>
+<style>
+  :root{--bg:#0e0f1a;--card:#181a2b;--line:#272a42;--txt:#e7e9f5;--dim:#9aa0c3;
+        --tw:#9146ff;--ok:#37d67a;--warn:#f5a623;--bad:#ec5b5b;--cmd:#56b6ff;--out:#c678dd}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#1b1d33,#0e0f1a);
+       color:var(--txt);font:14px/1.5 ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:880px;margin:0 auto;padding:22px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .sp{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;
+        background:var(--card);border:1px solid var(--line);font-weight:600;font-size:13px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);box-shadow:0 0 0 0 rgba(0,0,0,0)}
+  .dot.on{background:var(--ok);animation:pulse 1.8s infinite}
+  .dot.off{background:var(--bad)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(55,214,122,.5)}70%{box-shadow:0 0 0 7px rgba(55,214,122,0)}100%{box-shadow:0 0 0 0 rgba(55,214,122,0)}}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--dim);font-weight:700}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:4px 0}
+  .row .k{color:var(--dim)}
+  .row .v{font-weight:600;text-align:right;word-break:break-all}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px}
+  .stat{background:#11132099;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+  .stat b{display:block;font-size:22px;font-weight:700}
+  .stat span{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+  .feed{grid-column:1/-1}
+  .feed ul{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto}
+  .feed li{display:flex;gap:10px;align-items:baseline;padding:7px 4px;border-top:1px solid var(--line)}
+  .feed li:first-child{border-top:0}
+  .feed .t{color:var(--dim);font-variant-numeric:tabular-nums;font-size:12px;min-width:62px}
+  .feed .b{font-size:10px;font-weight:800;text-transform:uppercase;padding:1px 6px;border-radius:6px;letter-spacing:.05em}
+  .b.in{background:#9146ff22;color:#b794ff}.b.cmd{background:#56b6ff22;color:var(--cmd)}
+  .b.out{background:#c678dd22;color:var(--out)}.b.sys{background:#9aa0c322;color:var(--dim)}
+  .b.err{background:#ec5b5b22;color:var(--bad)}
+  .feed .x{flex:1}
+  footer{color:var(--dim);font-size:12px;text-align:center;margin-top:16px}
+  .err{color:var(--bad)}
+  .steps{margin:0 0 12px;padding-left:20px;color:var(--dim);font-size:13px}
+  .steps li{margin:5px 0}
+  .steps code{background:#0e0f1a;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:#8cd0ff}
+  .steps a{color:#8cd0ff}
+  .form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .form input{background:#0e0f1a;border:1px solid var(--line);color:var(--txt);border-radius:8px;
+    padding:8px 10px;font-size:13px;flex:1;min-width:140px}
+  .form button{background:var(--tw);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}
+  .form button:hover{filter:brightness(1.1)}
+  .dim{color:var(--dim);font-size:12px}
+  #setup h2{color:var(--tw)}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+  <header>
+    <h1>🎮 X4 ⇄ Twitch Companion</h1><div class="sp"></div>
+    <div class="pill"><span id="big" class="dot"></span><span id="bigt">connecting…</span></div>
+  </header>
+  <div class="card" id="setup" style="margin-bottom:14px;display:none">
+    <h2>① Connect to Twitch</h2>
+    <ol class="steps">
+      <li>Create a Twitch app at <a href="https://dev.twitch.tv/console" target="_blank" rel="noopener">dev.twitch.tv/console</a>
+        → <i>Register Your Application</i>. Set <b>OAuth Redirect URL</b> to <code>http://localhost:17563</code>, category <i>Application Integration</i>.</li>
+      <li>Paste the <b>Client ID</b> and <b>Client Secret</b> below, set your channel, and click <b>Connect</b>.</li>
+      <li>Your browser opens to authorize — approve the scopes and you're live. (One time; it remembers.)</li>
+    </ol>
+    <div class="form">
+      <input id="cid" placeholder="Client ID">
+      <input id="csecret" type="password" placeholder="Client Secret">
+      <input id="chan" placeholder="channel (your twitch login)">
+      <button id="connect">Connect to Twitch</button>
+      <span id="cstate" class="dim"></span>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card"><h2>Twitch</h2>
+      <div class="row"><span class="k">Source</span><span class="v" id="source">—</span></div>
+      <div class="row"><span class="k">Channel</span><span class="v" id="channel">—</span></div>
+      <div class="row"><span class="k">State</span><span class="v"><span id="srcdot" class="dot"></span> <span id="srcstate">—</span></span></div>
+      <div class="row"><span class="k">Bot</span><span class="v">
+        <a href="https://www.twitch.tv/signup" target="_blank" rel="noopener" style="color:#8cd0ff;text-decoration:none">🤖 create a bot account →</a></span></div>
+    </div>
+    <div class="card"><h2>X4 (game)</h2>
+      <div class="row"><span class="k">Link</span><span class="v"><span id="x4dot" class="dot"></span> <span id="x4state">—</span></span></div>
+      <div class="row"><span class="k">Socket</span><span class="v" id="socket" style="font-size:12px">—</span></div>
+      <div class="row"><span class="k">Uptime</span><span class="v" id="uptime">—</span></div>
+    </div>
+    <div class="card" style="grid-column:1/-1"><h2>Throughput</h2>
+      <div class="stats">
+        <div class="stat"><b id="ein">0</b><span>events in</span></div>
+        <div class="stat"><b id="cmd">0</b><span>commands</span></div>
+        <div class="stat"><b id="out">0</b><span>say → chat</span></div>
+      </div>
+    </div>
+    <div class="card" id="econcard" style="grid-column:1/-1;display:none"><h2>Economy ·
+      <a href="/catalog" style="color:var(--cmd);text-decoration:none">browse catalog →</a></h2>
+      <div class="stats">
+        <div class="stat"><b id="ev">0</b><span>viewers</span></div>
+        <div class="stat"><b id="ecoins">0</b><span>coins in circ.</span></div>
+        <div class="stat"><b id="eawarded">0</b><span>coins awarded</span></div>
+      </div>
+    </div>
+    <div class="card feed"><h2>Activity</h2><ul id="feed"><li><span class="x" style="color:var(--dim)">waiting for events…</span></li></ul></div>
+  </div>
+  <footer id="foot">polling…</footer>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+function fmtUp(s){const h=s/3600|0,m=s%3600/60|0,x=s%60;return h+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')}
+function fmtT(ts){const d=new Date(ts*1000);return d.toLocaleTimeString([], {hour12:false})}
+function dot(el,on){el.className='dot '+(on?'on':'off')}
+async function tick(){
+  try{
+    const s=await (await fetch('/api/status',{cache:'no-store'})).json();
+    const live=s.x4_connected&&s.source_running;
+    dot($('big'),live); $('bigt').textContent=live?'LIVE':(s.source_running?'waiting for X4':'idle');
+    $('source').textContent=s.source||'—'; $('channel').textContent=s.channel||'(not set)';
+    dot($('srcdot'),s.source_running); $('srcstate').textContent=s.source_running?'running':'stopped';
+    const tw=s.twitch||{};
+    if(s.source==='twitch'){
+      if(tw.connected){ $('setup').style.display='none'; dot($('srcdot'),true);
+        $('srcstate').textContent='connected: '+(tw.login||'?'); }
+      else { $('setup').style.display=''; dot($('srcdot'),!!tw.connecting);
+        $('srcstate').textContent=tw.connecting?'authorizing…':'not connected';
+        if(!$('cid').value&&tw.client_id) $('cid').value=tw.client_id;
+        if(!$('chan').value&&tw.channel) $('chan').value=tw.channel;
+        if(!document.activeElement||document.activeElement.id!=='cstate')
+          $('cstate').innerHTML=tw.connecting?'authorizing… <b>check your browser</b>':(tw.error?('<span class="err">'+esc(tw.error)+'</span>'):''); }
+    } else { $('setup').style.display='none'; }
+    dot($('x4dot'),s.x4_connected); $('x4state').textContent=s.x4_connected?'linked':'waiting';
+    $('socket').textContent=s.socket_path||'—'; $('uptime').textContent=fmtUp(s.uptime_s);
+    $('ein').textContent=s.events_in; $('cmd').textContent=s.commands_fired; $('out').textContent=s.actions_out;
+    const e=s.econ||{};
+    if(e&&Object.keys(e).length){ $('econcard').style.display=''; $('ev').textContent=e.viewers??0;
+      $('ecoins').textContent=e.coins_in_circulation??0; $('eawarded').textContent=e.coins_awarded_total??0; }
+    const feed=$('feed');
+    if(s.recent&&s.recent.length){
+      feed.innerHTML=s.recent.map(r=>`<li><span class="t">${fmtT(r.ts)}</span><span class="b ${r.dir}">${r.dir}</span><span class="x">${esc(r.text)}</span></li>`).join('');
+    }
+    $('foot').innerHTML=s.last_error?('<span class="err">last error: '+esc(s.last_error)+'</span>'):'connected to companion · refreshing every 1s';
+  }catch(e){ $('bigt').textContent='companion offline'; dot($('big'),false); $('foot').textContent='cannot reach companion (is it running?)'; }
+}
+function esc(t){return (t??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+const cbtn=$('connect');
+if(cbtn) cbtn.onclick=async()=>{
+  const b={client_id:$('cid').value.trim(),client_secret:$('csecret').value.trim(),channel:$('chan').value.trim()};
+  if(!b.client_id||!b.client_secret){$('cstate').innerHTML='<span class="err">Client ID and Secret are required</span>';return;}
+  $('cstate').innerHTML='starting… <b>a browser window will open to authorize</b>';
+  try{ await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); }
+  catch(e){ $('cstate').innerHTML='<span class="err">could not reach companion</span>'; }
+};
+tick(); setInterval(tick,1000);
+</script></body></html>"""
+
+
+CATALOG_PAGE = """<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Catalog — X4 ⇄ Twitch</title>
+<style>
+  :root{--bg:#0e0f1a;--card:#181a2b;--line:#272a42;--txt:#e7e9f5;--dim:#9aa0c3;--tw:#9146ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:#0e0f1a;color:var(--txt);font:14px/1.5 ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:22px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  h1{font-size:18px;margin:0}.sub{color:var(--dim);margin:0 0 16px}
+  a.back{color:#56b6ff;text-decoration:none;font-size:13px}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
+  input.search{flex:1;min-width:160px;background:var(--card);border:1px solid var(--line);color:var(--txt);
+    border-radius:9px;padding:8px 12px;font-size:14px}
+  .chip{background:var(--card);border:1px solid var(--line);color:var(--dim);border-radius:999px;
+    padding:5px 11px;font-size:12px;cursor:pointer;user-select:none}
+  .chip.on{background:#9146ff22;border-color:var(--tw);color:#cbb6ff}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);cursor:pointer;border-top:0}
+  td.buy{font-family:ui-monospace,monospace;color:#56b6ff;white-space:nowrap}
+  td.cost{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .b{font-size:10px;font-weight:800;text-transform:uppercase;padding:1px 7px;border-radius:6px;white-space:nowrap}
+  .t0{background:#37d67a22;color:#7ee2a8}.t1{background:#56b6ff22;color:#8cd0ff}
+  .t2{background:#f5a62322;color:#ffce7a}.t3{background:#ec5b5b22;color:#ff9a9a}
+  .k-good{color:#7ee2a8}.k-neutral{color:var(--dim)}.k-bad{color:#ffce7a}.k-doom{color:#ff9a9a}
+  .desc{color:var(--dim);font-size:13px}
+  .empty{color:var(--dim);padding:20px;text-align:center}
+</style></head><body><div class="wrap">
+  <header><h1>🛒 Viewer Catalog</h1></header>
+  <p class="sub"><a class="back" href="/">← back to dashboard</a> · what viewers can buy with coins · live from the companion</p>
+  <div class="controls">
+    <input class="search" id="q" placeholder="search name / description / key…">
+    <span class="chip on" data-tier="all">All tiers</span>
+    <span class="chip" data-tier="0">Pure</span><span class="chip" data-tier="1">Minor</span>
+    <span class="chip" data-tier="2">Major</span><span class="chip" data-tier="3">Doom</span>
+  </div>
+  <table><thead><tr>
+    <th data-k="buy_key">Buy</th><th data-k="label">Name</th><th data-k="cost">Cost</th>
+    <th data-k="tier">Tier</th><th data-k="karma">Karma</th><th data-k="cooldown">CD</th><th>What it does</th>
+  </tr></thead><tbody id="rows"></tbody></table>
+  <div class="empty" id="empty" style="display:none">No matching events.</div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const TIERN={0:'Pure',1:'Minor',2:'Major',3:'Doom'};
+let DATA=[], tier='all', q='', sortK='cost', asc=true;
+function esc(t){return (t??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function cost(r){return r.cost_per_unit?(r.cost_per_unit+'/'+(r.unit||'unit')):r.cost}
+function render(){
+  let rows=DATA.filter(r=>(tier==='all'||r.tier==+tier));
+  if(q){const s=q.toLowerCase();rows=rows.filter(r=>(r.label+' '+r.description+' '+r.buy_key).toLowerCase().includes(s))}
+  rows.sort((a,b)=>{let x=a[sortK],y=b[sortK];if(typeof x==='string'){return asc?(''+x).localeCompare(y):(''+y).localeCompare(x)}return asc?x-y:y-x});
+  $('#rows').innerHTML=rows.map(r=>`<tr>
+    <td class="buy">${esc(r.syntax)}</td><td>${esc(r.label)}</td>
+    <td class="cost">${esc(cost(r))}</td>
+    <td><span class="b t${r.tier}">${TIERN[r.tier]}</span></td>
+    <td class="k-${esc(r.karma)}">${esc(r.karma)}</td>
+    <td>${r.cooldown?Math.round(r.cooldown)+'s':'—'}</td>
+    <td class="desc">${esc(r.description)}</td></tr>`).join('');
+  $('#empty').style.display=rows.length?'none':'';
+}
+async function load(){try{DATA=await (await fetch('/api/catalog',{cache:'no-store'})).json();render();}catch(e){$('#empty').textContent='companion offline';$('#empty').style.display='';}}
+$('#q').addEventListener('input',e=>{q=e.target.value;render()});
+document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');tier=c.dataset.tier;render()});
+document.querySelectorAll('th[data-k]').forEach(h=>h.onclick=()=>{const k=h.dataset.k;asc=(sortK===k)?!asc:true;sortK=k;render()});
+load();
+</script></body></html>"""
+
+
+class _Handler(BaseHTTPRequestHandler):
+    status: Status = None  # type: ignore[assignment]
+    on_connect = None       # callable(dict) -> None
+    on_disconnect = None    # callable() -> None
+
+    def _send(self, code: int, body: bytes, ctype: str) -> None:
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path.startswith("/api/status"):
+            self._send(200, json.dumps(self.status.snapshot()).encode(), "application/json")
+        elif self.path.startswith("/api/catalog"):
+            self._send(200, json.dumps(catalog_view()).encode(), "application/json")
+        elif self.path in ("/", "/index.html"):
+            self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+        elif self.path.startswith("/catalog"):
+            self._send(200, CATALOG_PAGE.encode(), "text/html; charset=utf-8")
+        else:
+            self._send(404, b"not found", "text/plain")
+
+    def do_POST(self) -> None:  # noqa: N802
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            body = {}
+        if self.path.startswith("/api/connect"):
+            if self.on_connect:
+                self.on_connect(body)   # type: ignore[misc]
+            self._send(200, b'{"ok":true}', "application/json")
+        elif self.path.startswith("/api/disconnect"):
+            if self.on_disconnect:
+                self.on_disconnect()    # type: ignore[misc]
+            self._send(200, b'{"ok":true}', "application/json")
+        else:
+            self._send(404, b"not found", "text/plain")
+
+    def log_message(self, *args) -> None:  # silence access logs
+        return
+
+
+class Dashboard:
+    def __init__(self, status: Status, port: int = 17564, host: str = "127.0.0.1",
+                 on_connect=None, on_disconnect=None) -> None:
+        self.status = status
+        self.host = host
+        self.port = port
+        self.on_connect = on_connect
+        self.on_disconnect = on_disconnect
+        self._srv: ThreadingHTTPServer | None = None
+
+    @property
+    def url(self) -> str:
+        return f"http://{self.host}:{self.port}/"
+
+    def start(self) -> "Dashboard":
+        handler = type("Handler", (_Handler,), {
+            "status": self.status,
+            "on_connect": staticmethod(self.on_connect) if self.on_connect else None,
+            "on_disconnect": staticmethod(self.on_disconnect) if self.on_disconnect else None,
+        })
+        try:
+            self._srv = ThreadingHTTPServer((self.host, self.port), handler)
+        except OSError as e:
+            log.warning("dashboard could not bind %s:%d (%s) — continuing without it",
+                        self.host, self.port, e)
+            return self
+        threading.Thread(target=self._srv.serve_forever, name="dashboard", daemon=True).start()
+        log.info("dashboard at %s", self.url)
+        return self
+
+    def stop(self) -> None:
+        if self._srv is not None:
+            self._srv.shutdown()
+            self._srv = None

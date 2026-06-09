@@ -2,8 +2,9 @@
 <!--
   Twitch Integration — X4 extension manifest.
   Depends on the Mod Support APIs. On native Linux use the bekopharm linux-compat
-  fork (it keeps the same extension id 'sn_mod_support_apis'). Pin SN API >= 1.93.
-  [VERIFY] exact content.xml attribute schema against the X Community Wiki on install.
+  fork. NOTE: the API's content id is the original Steam Workshop id "ws_2042901274"
+  (NOT the folder name "sn_mod_support_apis") — every SirNukes companion mod depends
+  on it by that id, so we must too. Verified against the fork source (2026-06-09).
 -->
 <content id="twitch_integration"
          name="Twitch Integration"
@@ -12,6 +13,6 @@
          version="1"
          date="2026-06-08"
          save="0">
-  <dependency id="sn_mod_support_apis" optional="false"/>
+  <dependency id="ws_2042901274" version="100" optional="false"/>
   <!-- <text language="44" name="Twitch Integration" description="..."/> -->
 </content>

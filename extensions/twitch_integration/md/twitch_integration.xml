@@ -27,33 +27,33 @@
   <cues>
 
     <!-- ===== lifecycle ===================================================== -->
-    <cue name="Twitch_Reset" instantiate="true">
+    <!-- Start (and restart) the pipe read when the Named Pipes API signals it is
+         READY. md.Named_Pipes.Reloaded fires after the API's lua has loaded and
+         set its globals to enabled — on new game, savegame load, and ui reload —
+         and always AFTER our MD cues are registered (guaranteed in named_pipes.xml:
+         "the lua signal will always arrive after md cues are set up").
+         Triggering off event_game_started instead (our old bug) called Read before
+         the API was enabled, so the read was silently dropped and the socket never
+         opened. The host's own x4_python_host socket appeared but ours did not.
+         Verified against sn_mod_support_apis/md/named_pipes.xml on X4 8.00 (2026-06-09). -->
+    <cue name="Twitch_OnPipesReady" instantiate="true">
       <conditions>
-        <event_ui_triggered screen="'Twitch_Integration'" control="'reloaded'"/>
+        <event_cue_signalled cue="md.Named_Pipes.Reloaded"/>
       </conditions>
       <actions>
-        <set_value name="$pipe" exact="'twitch'"/>
-        <debug_text text="'[Twitch] lua reloaded; starting pipe read'" filter="general"/>
+        <debug_text text="'[Twitch] Named_Pipes ready; starting pipe read'" filter="general"/>
         <signal_cue_instantly cue="Twitch_StartReading"/>
       </actions>
     </cue>
 
-    <cue name="Twitch_Init" instantiate="true">
-      <conditions>
-        <event_game_started/>
-      </conditions>
-      <actions>
-        <signal_cue_instantly cue="Twitch_StartReading"/>
-      </actions>
-    </cue>
-
-    <!-- Start a continuous read on the pipe; each line invokes Twitch_OnPipeData. -->
+    <!-- Start a continuous read on the pipe; each line invokes Twitch_OnPipeData.
+         Signalled by Twitch_OnPipesReady, and re-signalled by Twitch_OnPipeData
+         after a pipe error/close so the read loop self-heals. -->
     <cue name="Twitch_StartReading" instantiate="true">
       <conditions>
         <event_cue_signalled/>
       </conditions>
       <actions>
-        <!-- [VERIFY] continuous-read invocation per Named_Pipes_API.md -->
         <signal_cue_instantly cue="md.Named_Pipes.Read"
           param="table[$pipe='twitch', $cue=Twitch_OnPipeData, $continuous=true]"/>
       </actions>
@@ -154,7 +154,11 @@
       </conditions>
       <actions>
         <set_value name="$msg" exact="event.param"/>
-        <set_value name="$json" exact="'{&quot;t&quot;:&quot;say&quot;,&quot;msg&quot;:&quot;' + $msg + '&quot;}'"/>
+        <!-- Trailing '\n' frames the line for the bridge's newline-delimited reader.
+             X4's pipe write does NOT add one (verified live 2026-06-09: the probe saw
+             24 bytes with no newline). MD supports '\n' escapes (cf. sn_mod_support_apis
+             interact_menu_api.xml: `$msg + '\n'`). -->
+        <set_value name="$json" exact="'{&quot;t&quot;:&quot;say&quot;,&quot;msg&quot;:&quot;' + $msg + '&quot;}' + '\n'"/>
         <signal_cue_instantly cue="md.Named_Pipes.Write"
           param="table[$pipe='twitch', $msg=$json, $cue=Twitch_OnWriteResult]"/>
       </actions>
