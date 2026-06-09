@@ -100,17 +100,34 @@
       </conditions>
       <actions>
         <debug_text text="'[Twitch] spawn requested: %s'.[event.param3]" filter="general"/>
-        <!-- Spawn an Argon scout in the player's zone. Syntax verified against the
-             game's own MD (zone="player.zone", plain macro name); macro confirmed
-             present in the catalog. First real in-game effect. -->
-        <do_if value="player.zone.exists">
+        <!-- Spawn a player-owned Argon scout next to the player. Position relative to
+             the occupied ship when flying, else the player character (on foot). All
+             elements (create_ship/owner/pilot/safepos) are verbatim from the game's
+             own MD; rename via <set_object_name> (the real action — .name is read-only). -->
+        <do_if value="player.occupiedship.exists">
           <create_ship name="$twitch_ship" macro="ship_arg_s_scout_01_a_macro" zone="player.zone">
-            <owner exact="faction.argon"/>
+            <owner exact="faction.player" overridenpc="true"/>
+            <pilot>
+              <select race="[race.argon, race.paranid, race.teladi]" tags="tag.aipilot"/>
+            </pilot>
+            <safepos object="player.occupiedship" x="2km" y="0" z="2km"/>
           </create_ship>
-          <debug_text text="'[Twitch] SPAWNED %s in %s'.[$twitch_ship, player.zone.name]" filter="general"/>
+        </do_if>
+        <do_elseif value="player.entity.exists">
+          <create_ship name="$twitch_ship" macro="ship_arg_s_scout_01_a_macro" zone="player.zone">
+            <owner exact="faction.player" overridenpc="true"/>
+            <pilot>
+              <select race="[race.argon, race.paranid, race.teladi]" tags="tag.aipilot"/>
+            </pilot>
+            <safepos object="player.entity" x="2km" y="0" z="2km"/>
+          </create_ship>
+        </do_elseif>
+        <do_if value="$twitch_ship?">
+          <set_object_name object="$twitch_ship" name="'Twitch 1'"/>
+          <debug_text text="'[Twitch] SPAWNED %s renamed to Twitch 1'.[$twitch_ship]" filter="general"/>
         </do_if>
         <do_else>
-          <debug_text text="'[Twitch] spawn skipped: no player.zone'" filter="general"/>
+          <debug_text text="'[Twitch] spawn failed: no ship created'" filter="general"/>
         </do_else>
       </actions>
     </cue>
