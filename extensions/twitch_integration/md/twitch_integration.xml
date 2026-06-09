@@ -99,8 +99,19 @@
         <event_ui_triggered screen="'Twitch_Integration'" control="'spawn'"/>
       </conditions>
       <actions>
-        <debug_text text="'[Twitch] spawn: %s'.[event.param3]" filter="general"/>
-        <!-- TODO: spawn a ship near the player; args.$ship holds the requested type -->
+        <debug_text text="'[Twitch] spawn requested: %s'.[event.param3]" filter="general"/>
+        <!-- Spawn an Argon scout in the player's zone. Syntax verified against the
+             game's own MD (zone="player.zone", plain macro name); macro confirmed
+             present in the catalog. First real in-game effect. -->
+        <do_if value="player.zone.exists">
+          <create_ship name="$twitch_ship" macro="ship_arg_s_scout_01_a_macro" zone="player.zone">
+            <owner exact="faction.argon"/>
+          </create_ship>
+          <debug_text text="'[Twitch] SPAWNED %s in %s'.[$twitch_ship, player.zone.name]" filter="general"/>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] spawn skipped: no player.zone'" filter="general"/>
+        </do_else>
       </actions>
     </cue>
 
