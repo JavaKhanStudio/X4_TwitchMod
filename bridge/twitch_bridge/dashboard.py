@@ -61,8 +61,12 @@ PAGE = """<!doctype html>
   .feed .x{flex:1}
   footer{color:var(--dim);font-size:12px;text-align:center;margin-top:16px}
   .err{color:var(--bad)}
-  .steps{margin:0 0 12px;padding-left:20px;color:var(--dim);font-size:13px}
+  .steps{margin:0 0 10px;padding-left:20px;color:var(--dim);font-size:13px}
   .steps li{margin:5px 0}
+  .steps ul.sub{margin:5px 0;padding-left:18px}
+  .steps ul.sub li{margin:2px 0}
+  .note{background:#9146ff14;border:1px solid #9146ff44;border-radius:9px;padding:9px 12px;
+    font-size:12.5px;color:#cbb6ff;margin:0 0 14px}
   .steps code{background:#0e0f1a;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:#8cd0ff}
   .steps a{color:#8cd0ff}
   .form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -81,11 +85,20 @@ PAGE = """<!doctype html>
   <div class="card" id="setup" style="margin-bottom:14px;display:none">
     <h2>① Connect to Twitch</h2>
     <ol class="steps">
-      <li>Create a Twitch app at <a href="https://dev.twitch.tv/console" target="_blank" rel="noopener">dev.twitch.tv/console</a>
-        → <i>Register Your Application</i>. Set <b>OAuth Redirect URL</b> to <code>http://localhost:17563</code>, category <i>Application Integration</i>.</li>
-      <li>Paste the <b>Client ID</b> and <b>Client Secret</b> below, set your channel, and click <b>Connect</b>.</li>
-      <li>Your browser opens to authorize — approve the scopes and you're live. (One time; it remembers.)</li>
+      <li><b>Create your own Twitch app</b> (free, ~1 min) at
+        <a href="https://dev.twitch.tv/console/apps/create" target="_blank" rel="noopener">dev.twitch.tv/console</a>
+        → <i>Register Your Application</i>:
+        <ul class="sub">
+          <li>Name: anything (e.g. <i>My X4 Companion</i>)</li>
+          <li>OAuth Redirect URL: <code>http://localhost:17563</code> &nbsp;(exactly this)</li>
+          <li>Category: <i>Application Integration</i> · Client Type: <i>Confidential</i></li>
+        </ul></li>
+      <li>On the app's page: copy the <b>Client ID</b>, click <i>New Secret</i>, copy the <b>Client Secret</b>.</li>
+      <li>Paste both below + your channel login, click <b>Connect</b>. A browser opens to authorize —
+        approve, and you're live. <span class="dim">(One time; remembered &amp; auto-refreshed.)</span></li>
     </ol>
+    <p class="note">💡 Use <b>your own app</b> (above), not a token-generator site — that's what lets the
+      connection refresh itself so it never expires mid-stream.</p>
     <div class="form">
       <input id="cid" placeholder="Client ID">
       <input id="csecret" type="password" placeholder="Client Secret">

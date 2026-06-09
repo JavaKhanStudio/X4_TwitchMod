@@ -20,6 +20,14 @@ and tested headless:
 X4 effects per catalog event, and the in-game Enable-Twitch panel. Day-by-day log:
 [`docs/DEVLOG.md`](docs/DEVLOG.md).
 
+## What it looks like
+The companion is a small localhost web app — a live status dashboard and a searchable catalog
+of what viewers can buy. (Screenshots regenerate via `python bridge/tools/make_screenshots.py`.)
+
+| Dashboard | Catalog (the "item-list") |
+|---|---|
+| [![dashboard](docs/img/dashboard.png)](docs/img/dashboard.png) | [![catalog](docs/img/catalog.png)](docs/img/catalog.png) |
+
 ## How it works (the short version)
 X4 mods can't open sockets or reach the network. So Twitch lives in a small **companion app**
 that bridges into the game:
@@ -44,9 +52,31 @@ pip install -r requirements.txt
 ./run-companion.sh            # opens the dashboard at http://127.0.0.1:17564/
 ./install-launcher.sh         # (optional) adds an app-menu launcher button
 ```
-The dashboard's **① Connect to Twitch** panel walks you through creating a Twitch app and
-authorizing (one time). Your credentials are stored locally (gitignored, chmod 600) — never in
-the repo. See [`SECURITY.md`](SECURITY.md).
+## Setting up Twitch (one-time)
+The companion uses **your own free Twitch app**, so the connection refreshes itself and never
+expires mid-stream. (A token-generator site such as *twitchtokengenerator* hands you a token
+that can't self-refresh — fine for an old IRC chat bot, but not for the modern **EventSub** API
+this project uses. See [`docs/09`](docs/09-onboarding-oauth-and-companion-ux.md).)
+
+The companion's **① Connect to Twitch** panel walks you through it:
+
+![Connect to Twitch panel](docs/img/oauth-setup.png)
+
+1. **Create your own Twitch app** (free, ~1 min) at
+   **[dev.twitch.tv/console](https://dev.twitch.tv/console/apps/create)** → *Register Your Application*:
+   - **Name:** anything (e.g. *My X4 Companion*)
+   - **OAuth Redirect URL:** `http://localhost:17563` (exactly this)
+   - **Category:** *Application Integration* · **Client Type:** *Confidential*
+2. On the app's page, copy the **Client ID**, click **New Secret**, copy the **Client Secret**.
+3. Paste both + your channel login into the panel and click **Connect**. Your browser opens to
+   authorize — approve, and you're live (one time; remembered & auto-refreshed).
+
+> Want messages to come from a separate bot name? Create a second Twitch account first
+> ([twitch.tv/signup](https://www.twitch.tv/signup)), sign into it in your browser, then
+> authorize as that account in step 3.
+
+Credentials are stored locally (gitignored, `chmod 600`) — never in the repo. See
+[`SECURITY.md`](SECURITY.md).
 
 ## Reference bank — read in order
 | Doc | What's in it |
