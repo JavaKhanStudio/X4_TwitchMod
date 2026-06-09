@@ -102,5 +102,16 @@ check(w.get("dan").coins >= 1000, "broadcaster !givecoins works")
 o = econ.handle_chat(chat("rando", "!givecoins @dan 1000"))
 check(o == [], "non-mod admin command ignored")
 
+# command aliases resolve to one canonical command
+check(econ._canon.get("!bal") == "balance" and econ._canon.get("!coins") == "balance",
+      "!bal / !coins alias !balance")
+check(econ._canon.get("!give") == "gift" and econ._canon.get("!purchase") == "buy",
+      "!give -> gift, !purchase -> buy")
+o = econ.handle_chat(chat("alice", "!bal"))
+check(o and o[0]["t"] == "say" and "balance" in o[0]["msg"], "!bal works end-to-end like !balance")
+w.get("alice").coins = 500   # top up so the purchase is affordable
+o = econ.handle_chat(chat("alice", "!purchase nameship Foo"))
+check(o and o[0]["t"] == "cmd" and o[0]["id"] == "name_ship", "!purchase works like !buy")
+
 print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
 sys.exit(0 if ok else 1)

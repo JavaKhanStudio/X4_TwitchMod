@@ -22,6 +22,19 @@ KARMA_CAP_FIELD = {
     "doom": "max_doom_per_interval",
 }
 
+# Chat command shortcuts — EDIT THIS to add aliases. canonical -> [aliases] (no "!").
+# e.g. "balance" responds to !balance, !bal, !coins. Add a word to a list to add a shortcut.
+COMMAND_ALIASES = {
+    "balance":      ["balance", "bal", "coins", "money"],
+    "karma":        ["karma", "whatiskarma", "rep"],
+    "shop":         ["shop", "catalog", "store", "purchaselist", "instructions", "commands", "help"],
+    "gift":         ["gift", "give"],
+    "buy":          ["buy", "purchase"],
+    "givecoins":    ["givecoins"],
+    "giveallcoins": ["giveallcoins"],
+    "setkarma":     ["setkarma"],
+}
+
 
 class Economy:
     def __init__(self, wallet: Wallet, catalog: list[StoreEvent] | None = None,
@@ -31,6 +44,8 @@ class Economy:
         self.clock = clock
         self.by_key = {e.buy_key.lower(): e for e in (catalog if catalog is not None else CATALOG)}
         self._purchases: deque[tuple[float, str, str]] = deque()  # (when, event_id, karmatype)
+        # alias ("!bal") -> canonical ("balance")
+        self._canon = {f"!{a.lower()}": c for c, al in COMMAND_ALIASES.items() for a in al}
 
     # -- public: process one chat message -----------------------------------
     def handle_chat(self, event: dict) -> list[dict]:
@@ -43,25 +58,25 @@ class Economy:
         if not msg.startswith("!"):
             return []
         tok = msg.split()
-        cmd = tok[0].lower()
+        canon = self._canon.get(tok[0].lower())   # resolve any alias to its canonical command
 
-        if cmd in ("!balance", "!bal", "!coins"):
+        if canon == "balance":
             v = self.w.get(user)
             return [protocol.say(f"@{user} balance: {v.coins} coins · karma {v.karma}%")]
-        if cmd in ("!karma", "!whatiskarma"):
+        if canon == "karma":
             return [protocol.say(f"@{user} karma is a % that multiplies your coin income; "
                                  f"buying good events raises it, bad/doom events lower it. You: "
                                  f"{self.w.get(user).karma}%")]
-        if cmd in ("!shop", "!catalog", "!purchaselist", "!instructions"):
+        if canon == "shop":
             return [protocol.say(f"@{user} buy events with !buy <key>. Try !buy "
                                  + ", ".join(sorted(k for k, e in self.by_key.items() if e.enabled)[:6]))]
-        if cmd == "!gift":
+        if canon == "gift":
             return self._gift(user, tok)
-        if cmd == "!buy":
+        if canon == "buy":
             return self._buy(user, role, tok)
-        # admin
-        if cmd in ("!givecoins", "!giveallcoins", "!setkarma") and ROLE_RANK[role] >= ROLE_RANK["moderator"]:
-            return self._admin(cmd, tok)
+        # admin (mod/broadcaster only)
+        if canon in ("givecoins", "giveallcoins", "setkarma") and ROLE_RANK[role] >= ROLE_RANK["moderator"]:
+            return self._admin(canon, tok)
         return []
 
     # -- the purchase pipeline (doc 08 §4.1) --------------------------------
@@ -153,16 +168,16 @@ class Economy:
         return [protocol.say(f"@{target} got {amount} coins from @{user}!")]
 
     def _admin(self, cmd: str, tok: list[str]) -> list[dict]:
-        if cmd == "!giveallcoins" and len(tok) >= 2 and tok[1].lstrip("-").isdigit():
+        if cmd == "giveallcoins" and len(tok) >= 2 and tok[1].lstrip("-").isdigit():
             n = int(tok[1])
             for v in self.w.viewers.values():
                 self.w.give_coins(v.username, n)
             return [protocol.say(f"gave {n} coins to all {len(self.w.viewers)} viewers.")]
-        if cmd == "!givecoins" and len(tok) >= 3 and tok[2].lstrip("-").isdigit():
+        if cmd == "givecoins" and len(tok) >= 3 and tok[2].lstrip("-").isdigit():
             target = tok[1].lstrip("@")
             self.w.give_coins(target, int(tok[2]))
             return [protocol.say(f"@{target} now has {self.w.get(target).coins} coins.")]
-        if cmd == "!setkarma" and len(tok) >= 3 and tok[2].lstrip("-").isdigit():
+        if cmd == "setkarma" and len(tok) >= 3 and tok[2].lstrip("-").isdigit():
             target = tok[1].lstrip("@")
             self.w.set_karma(target, int(tok[2]))
             return [protocol.say(f"@{target} karma set to {self.w.get(target).karma}%.")]
