@@ -174,6 +174,9 @@ async function tick(){
         txt($('srcstate'),tw.connecting?'authorizing…':'not connected');
         if(!$('cid').value&&tw.client_id) $('cid').value=tw.client_id;
         if(!$('chan').value&&tw.channel) $('chan').value=tw.channel;
+        const sp=tw.has_secret?'saved ✓ — leave blank to keep':'click “New Secret”';
+        if($('csecret').placeholder!==sp) $('csecret').placeholder=sp;
+        $('csecret').dataset.saved=tw.has_secret?'1':'';
         if(document.activeElement&&document.activeElement.id==='cstate'){}
         else html($('cstate'),tw.connecting?'authorizing… <b>check your browser</b>':(tw.error?('<span class="err">'+esc(tw.error)+'</span>'):'')); }
     } else { disp($('setup'),false); dot($('srcdot'),s.source_running); txt($('srcstate'),s.source_running?'running':'stopped'); }
@@ -196,7 +199,9 @@ document.querySelectorAll('.copy').forEach(btn=>btn.onclick=()=>{
 const cbtn=$('connect');
 if(cbtn) cbtn.onclick=async()=>{
   const b={client_id:$('cid').value.trim(),client_secret:$('csecret').value.trim(),channel:$('chan').value.trim()};
-  if(!b.client_id||!b.client_secret){html($('cstate'),'<span class="err">Client ID and Secret are required</span>');return;}
+  const needSecret=$('csecret').dataset.saved!=='1';
+  if(!b.client_id||(needSecret&&!b.client_secret)){
+    html($('cstate'),'<span class="err">'+(needSecret?'Client ID and Secret are':'Client ID is')+' required</span>');return;}
   html($('cstate'),'starting… <b>a browser window will open to authorize</b>');
   try{ await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); }
   catch(e){ html($('cstate'),'<span class="err">could not reach companion</span>'); }

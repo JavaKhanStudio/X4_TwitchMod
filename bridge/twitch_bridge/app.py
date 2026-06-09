@@ -72,10 +72,13 @@ async def main(config: Config) -> None:
     loop = asyncio.get_running_loop()
 
     def on_connect(body: dict) -> None:
-        """Called from the dashboard thread when the user clicks Connect."""
-        cid = (body.get("client_id") or "").strip()
-        secret = (body.get("client_secret") or "").strip()
-        chan = (body.get("channel") or "").strip()
+        """Called from the dashboard thread when the user clicks Connect.
+        Blank fields fall back to the saved values — so the user never has to
+        re-enter the secret (Twitch shows it only once)."""
+        saved = setup_store.load()
+        cid = (body.get("client_id") or "").strip() or saved.get("client_id", "")
+        secret = (body.get("client_secret") or "").strip() or saved.get("client_secret", "")
+        chan = (body.get("channel") or "").strip() or saved.get("channel", "")
         if not (cid and secret):
             return
         setup_store.save({"client_id": cid, "client_secret": secret, "channel": chan})

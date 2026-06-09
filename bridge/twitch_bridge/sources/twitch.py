@@ -97,10 +97,12 @@ class TwitchSource(Source):
                 pass
 
     def state(self) -> dict:
-        # client_id is semi-public (prefill convenience); the SECRET is never exposed.
+        # client_id is semi-public (prefill convenience); the SECRET is never exposed,
+        # only whether one is on file (so the UI can say "saved, leave blank to keep").
         return {"connected": self.connected, "connecting": self.connecting,
                 "login": self.login, "channel": self.config.channel,
-                "client_id": self.config.client_id, "error": self.error}
+                "client_id": self.config.client_id,
+                "has_secret": bool(self.config.client_secret), "error": self.error}
 
     async def connect(self, client_id: str, client_secret: str, channel: str = "") -> bool:
         """Authenticate + subscribe (the OAuth flow). Returns success. Safe to call
