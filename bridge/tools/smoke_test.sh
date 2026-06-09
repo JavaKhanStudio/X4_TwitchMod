@@ -23,7 +23,7 @@ sleep 0.6   # let the socket come up
 # to receive the 'say'. !ping (everyone) and a mod !spawn pass; raid -> reinforce.
 ( sleep 0.6; echo "chat alice !ping"; echo "chatas moderator mod !spawn fighter";
   echo "raid bob 250"; sleep 3.0 ) | \
-  "$PY" -m twitch_bridge --socket "$SOCK" --no-dashboard --no-economy >"$BRIDGE_OUT" 2>&1 &
+  "$PY" -m twitch_bridge --socket "$SOCK" --no-dashboard --no-economy --no-launcher >"$BRIDGE_OUT" 2>&1 &
 BRIDGE_PID=$!
 
 sleep 5

@@ -31,7 +31,7 @@ def wait_up(url, tries=60):
 # Start the real bridge. stdin=PIPE kept open so the stdin source stays "running".
 proc = subprocess.Popen(
     [sys.executable, "-m", "twitch_bridge", "--source", "stdin",
-     "--dashboard-port", str(PORT), "--socket", "/tmp/pw_nope.xml"],
+     "--dashboard-port", str(PORT), "--socket","/tmp/pw_nope.xml","--no-launcher"],
     cwd=str(ROOT), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     env={**os.environ, "PYTHONPATH": "."},
 )

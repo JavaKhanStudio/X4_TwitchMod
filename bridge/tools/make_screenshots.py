@@ -32,7 +32,7 @@ def wait_up(url, tries=80):
 
 proc = subprocess.Popen(
     [sys.executable, "-m", "twitch_bridge", "--source", "twitch", "--dashboard-port", str(PORT),
-     "--socket", "/tmp/x4-twitch.sock", "--wallet", "/tmp/shot_wallet.json"],
+     "--socket", "/tmp/x4-twitch.sock", "--wallet","/tmp/shot_wallet.json","--no-launcher"],
     cwd=str(ROOT), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     env={**os.environ, "PYTHONPATH": ".", "TWITCH_CLIENT_ID": "", "TWITCH_CLIENT_SECRET": ""},
 )

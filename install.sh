@@ -50,17 +50,17 @@ cat > "$APPS/x4-twitch-companion.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=X4 ⇄ Twitch Companion
+Name=X4 Twitch Companion
 Comment=Start the X4 Twitch companion + dashboard
-Exec=$COMP/run-companion.sh
+Exec="$COMP/run-companion.sh"
 Icon=input-gaming
 Terminal=true
-Categories=Game;Utility;
+Categories=Game;
 EOF
-chmod +x "$APPS/x4-twitch-companion.desktop"
+chmod 0755 "$APPS/x4-twitch-companion.desktop"
 update-desktop-database "$APPS" 2>/dev/null || true
 
-echo "✅ launcher installed:    'X4 ⇄ Twitch Companion' in your app menu"
+echo "✅ launcher installed:    'X4 Twitch Companion' in your app menu"
 echo
 echo "Done. The companion now lives INSIDE the mod ($COMP),"
 echo "so it's found wherever X4's mods are. Launch it from the app menu,"

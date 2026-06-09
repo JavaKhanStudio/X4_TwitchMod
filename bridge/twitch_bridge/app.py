@@ -112,6 +112,13 @@ async def main(config: Config) -> None:
             except Exception as e:  # never let opening a browser kill the companion
                 log.warning("could not auto-open browser (%s) — open %s manually", e, dash.url)
 
+    # Self-install the app-menu launcher so a shared mod just needs to be run once.
+    if config.launcher:
+        from .launcher import ensure_launcher
+        made = ensure_launcher()
+        if made:
+            log.info("app-menu launcher: %s", made)
+
     link_task = asyncio.create_task(link.run(), name="x4link")
     poll_task = asyncio.create_task(_poll_x4(link, status), name="x4poll")
     award_task = (asyncio.create_task(_award_loop(wallet, status), name="award")

@@ -19,6 +19,7 @@ def _parse_args() -> Config:
     p.add_argument("--dashboard-port", type=int, default=cfg.dashboard_port, help="dashboard port (default: %(default)s)")
     p.add_argument("--open", action="store_true", help="open the dashboard in your browser on start")
     p.add_argument("--no-economy", action="store_true", help="disable the coin wallet + !buy store")
+    p.add_argument("--no-launcher", action="store_true", help="do not (re)install the app-menu launcher")
     p.add_argument("--wallet", default=cfg.wallet_path, help="viewer wallet file (default: %(default)s)")
     p.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     a = p.parse_args()
@@ -28,6 +29,7 @@ def _parse_args() -> Config:
     cfg.dashboard_port = a.dashboard_port
     cfg.open_browser = a.open
     cfg.economy = not a.no_economy
+    cfg.launcher = not a.no_launcher
     cfg.wallet_path = a.wallet
     logging.basicConfig(
         level=logging.DEBUG if a.verbose else logging.INFO,

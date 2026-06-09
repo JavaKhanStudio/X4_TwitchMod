@@ -40,6 +40,9 @@ class Config:
     dashboard_port: int = field(default_factory=lambda: int(os.environ.get("X4_TWITCH_DASHBOARD_PORT", "17564")))
     open_browser: bool = field(default_factory=lambda: os.environ.get("X4_TWITCH_OPEN", "0") == "1")
 
+    # Best-effort: install an app-menu launcher on startup (so users never file-hunt).
+    launcher: bool = field(default_factory=lambda: os.environ.get("X4_TWITCH_LAUNCHER", "1") != "0")
+
     # --- Viewer economy (wallet + karma + !buy store; doc 08) ---
     economy: bool = field(default_factory=lambda: os.environ.get("X4_TWITCH_ECONOMY", "1") != "0")
     wallet_path: str = field(default_factory=lambda: os.environ.get(
