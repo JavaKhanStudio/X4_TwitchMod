@@ -45,13 +45,17 @@ via a side-loaded **LuaSocket** library — the MIT-licensed, X4-8.x-maintained 
 API**; the companion connects in as a client. (In-game process spawning is blocked by X4's FFI
 sandbox, so the companion is started separately — see [`docs/09`](docs/09-onboarding-oauth-and-companion-ux.md).)
 
-## Quick start (the companion)
+## Quick start
 ```bash
-cd bridge
-pip install -r requirements.txt
-./run-companion.sh            # opens the dashboard at http://127.0.0.1:17564/
-./install-launcher.sh         # (optional) adds an app-menu launcher button
+pip install -r bridge/requirements.txt   # one-time Python deps (twitchAPI)
+./install.sh                             # mod → X4 + companion bundled inside the mod + app launcher
 ```
+Then launch **"X4 ⇄ Twitch Companion"** from your application menu — no file-hunting. The
+companion lives *inside* the installed mod
+(`<X4>/extensions/twitch_integration/companion/`), so it travels with the mod and is found
+wherever X4's mods are. The dashboard opens at `http://127.0.0.1:17564/`. (For development you
+can also run it straight from the repo: `./bridge/run-companion.sh`. Re-run `./install.sh` to
+redeploy after code changes.)
 ## Setting up Twitch (one-time)
 The companion uses **your own free Twitch app**, so the connection refreshes itself and never
 expires mid-stream. (A token-generator site such as *twitchtokengenerator* hands you a token
