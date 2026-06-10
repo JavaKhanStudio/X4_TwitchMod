@@ -99,35 +99,38 @@
         <event_ui_triggered screen="'Twitch_Integration'" control="'spawn'"/>
       </conditions>
       <actions>
-        <debug_text text="'[Twitch] spawn requested: %s'.[event.param3]" filter="general"/>
-        <!-- Spawn a player-owned Argon scout next to the player. Position relative to
-             the occupied ship when flying, else the player character (on foot). All
-             elements (create_ship/owner/pilot/safepos) are verbatim from the game's
-             own MD; rename via <set_object_name> (the real action — .name is read-only). -->
+        <debug_text text="'[Twitch] swarm spawn requested'" filter="general"/>
+        <!-- Spawn a fleet of 20 player-owned Argon scouts next to the player, named
+             Twitch 2..21 (Twitch 1 already exists). Position relative to the occupied
+             ship when flying, else the player character (on foot); spread along x so
+             they form a visible wall. All elements verbatim from the game's own MD;
+             rename via <set_object_name> (operators 'le'/'+' and 'Twitch %s'.[$n]
+             format verified against the game's MD). -->
         <do_if value="player.occupiedship.exists">
-          <create_ship name="$twitch_ship" macro="ship_arg_s_scout_01_a_macro" zone="player.zone">
-            <owner exact="faction.player" overridenpc="true"/>
-            <pilot>
-              <select race="[race.argon, race.paranid, race.teladi]" tags="tag.aipilot"/>
-            </pilot>
-            <safepos object="player.occupiedship" x="2km" y="0" z="2km"/>
-          </create_ship>
-        </do_if>
-        <do_elseif value="player.entity.exists">
-          <create_ship name="$twitch_ship" macro="ship_arg_s_scout_01_a_macro" zone="player.zone">
-            <owner exact="faction.player" overridenpc="true"/>
-            <pilot>
-              <select race="[race.argon, race.paranid, race.teladi]" tags="tag.aipilot"/>
-            </pilot>
-            <safepos object="player.entity" x="2km" y="0" z="2km"/>
-          </create_ship>
-        </do_elseif>
-        <do_if value="$twitch_ship?">
-          <set_object_name object="$twitch_ship" name="'Twitch 1'"/>
-          <debug_text text="'[Twitch] SPAWNED %s renamed to Twitch 1'.[$twitch_ship]" filter="general"/>
+          <set_value name="$ref" exact="player.occupiedship"/>
         </do_if>
         <do_else>
-          <debug_text text="'[Twitch] spawn failed: no ship created'" filter="general"/>
+          <set_value name="$ref" exact="player.entity"/>
+        </do_else>
+        <do_if value="$ref.exists">
+          <set_value name="$n" exact="2"/>
+          <do_while value="$n le 21">
+            <create_ship name="$twitch_ship" macro="ship_arg_s_scout_01_a_macro" zone="player.zone">
+              <owner exact="faction.player" overridenpc="true"/>
+              <pilot>
+                <select race="[race.argon, race.paranid, race.teladi]" tags="tag.aipilot"/>
+              </pilot>
+              <safepos object="$ref" x="($n - 11) * 0.2km" y="0" z="2km"/>
+            </create_ship>
+            <do_if value="$twitch_ship?">
+              <set_object_name object="$twitch_ship" name="'Twitch %s'.[$n]"/>
+            </do_if>
+            <set_value name="$n" exact="$n + 1"/>
+          </do_while>
+          <debug_text text="'[Twitch] swarm spawned: Twitch 2..%s'.[$n - 1]" filter="general"/>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] swarm skipped: no player ref'" filter="general"/>
         </do_else>
       </actions>
     </cue>
