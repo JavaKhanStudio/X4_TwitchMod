@@ -42,7 +42,15 @@ class Economy:
         self.w = wallet
         self.s: EconomySettings = wallet.s
         self.clock = clock
-        self.by_key = {e.buy_key.lower(): e for e in (catalog if catalog is not None else CATALOG)}
+        # !buy lookup: buy_key + nicknames -> event. Info actions are excluded —
+        # they answer via COMMAND_ALIASES below, they are not purchases.
+        self.by_key = {}
+        for e in (catalog if catalog is not None else CATALOG):
+            if e.kind == "info":
+                continue
+            self.by_key[e.buy_key.lower()] = e
+            for n in e.nicknames:
+                self.by_key[n.lower()] = e
         self._purchases: deque[tuple[float, str, str]] = deque()  # (when, event_id, karmatype)
         # alias ("!bal") -> canonical ("balance")
         self._canon = {f"!{a.lower()}": c for c, al in COMMAND_ALIASES.items() for a in al}
@@ -69,7 +77,7 @@ class Economy:
                                  f"{self.w.get(user).karma}%")]
         if canon == "shop":
             return [protocol.say(f"@{user} buy events with !buy <key>. Try !buy "
-                                 + ", ".join(sorted(k for k, e in self.by_key.items() if e.enabled)[:6]))]
+                                 + ", ".join(sorted({e.buy_key for e in self.by_key.values() if e.enabled})[:6]))]
         if canon == "gift":
             return self._gift(user, tok)
         if canon == "buy":

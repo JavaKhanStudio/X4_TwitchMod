@@ -61,9 +61,14 @@ STARTER = [
 # ---------------------------------------------------------------------------
 
 # Severity tier = the streamer's "experience dial" (doc 08 §5). Orthogonal to karma.
-TIERS = {0: "Pure Interaction", 1: "Minor Distraction", 2: "Major Distraction", 3: "Doom"}
+# -1 Debug is dev-only plumbing (test triggers), never part of the viewer economy.
+TIERS = {-1: "Debug", 0: "Pure Interaction", 1: "Minor Distraction",
+         2: "Major Distraction", 3: "Doom"}
 # Reputation effect on the buyer's karma (doc 08 §3).
 KARMA = ("good", "neutral", "bad", "doom")
+# What the action does for the viewer: "info" answers in chat (bridge-side, e.g.
+# !bal); "effect" changes the game (MD cue). Both show on the catalog page.
+KINDS = ("info", "effect")
 # Implementation status — the catalog doubles as the interactions roadmap, so every
 # idea gets an entry the moment it exists; `status` tracks DEV progress (orthogonal
 # to `enabled`, which is streamer config). tools/test_md_sync.py enforces that
@@ -82,6 +87,8 @@ class StoreEvent:
     # --- identity / runtime (drives the !buy engine; M4.0) ---
     id: str                          # internal action id = the MD cue X4 fires
     buy_key: str                     # the `!buy <key>` abbreviation (TT's "abr")
+    nicknames: list[str] = field(default_factory=list)  # extra accepted keys (e.g. "sats")
+    kind: str = "effect"             # info (chat answer) | effect (changes the game)
 
     # --- economy (doc 08 §3-4) ---
     cost: int = 0                    # fixed coin cost (0 + cost_per_unit => variable)
@@ -101,7 +108,7 @@ class StoreEvent:
     label: str = ""                  # human name (defaults to buy_key)
     description: str = ""            # viewer-facing "what happens"
     category: str = "Misc"           # grouping in the list view
-    tier: int = 0                    # 0 Pure / 1 Minor / 2 Major / 3 Doom (§5)
+    tier: int = 0                    # -1 Debug / 0 Pure / 1 Minor / 2 Major / 3 Doom (§5)
 
     # --- lifecycle ---
     status: str = "planned"          # dev progress: live | wip | planned | suggested
@@ -113,6 +120,8 @@ class StoreEvent:
         """The chat usage string shown in the item-list / help."""
         if self.on_event:
             return f"(auto on {self.on_event})"
+        if self.kind == "info":      # direct chat command, not a purchase
+            return " ".join([f"!{self.buy_key}"] + [f"<{a}>" for a in self.args])
         return " ".join(["!buy", self.buy_key] + [f"<{a}>" for a in self.args])
 
     @property
@@ -124,6 +133,8 @@ class StoreEvent:
         Display code consumes ONLY this dict, never the live object."""
         return {
             "buy_key": self.buy_key,
+            "nicknames": self.nicknames,
+            "kind": self.kind,
             "label": self.label or self.buy_key,
             "description": self.description,
             "category": self.category,
@@ -145,11 +156,25 @@ class StoreEvent:
 # the schema: fixed + variable cost, args, on_event triggers, all 4 tiers, karma,
 # default-off destructive tiers. Costs are first-draft (doc 08 §5.1).
 CATALOG: list[StoreEvent] = [
-    # DEV TEST — `!buy test` -> id "spawn" -> the MD Twitch_OnSpawn cue (spawns 20
-    # named scouts). Free, so it's easy to fire. Remove once real effects are wired.
-    StoreEvent(id="spawn", buy_key="test", cost=0, karma="neutral", tier=0,
+    # Tier -1 — Debug (dev-only plumbing; never part of the viewer economy) ---
+    # `!buy test` -> id "spawn" -> the MD Twitch_OnSpawn cue (spawns 20 named
+    # scouts). Free, so it's easy to fire. Remove once real effects are wired.
+    StoreEvent(id="spawn", buy_key="test", cost=0, karma="neutral", tier=-1,
                category="Test", label="Test: spawn 20 ships", status="live",
                description="Spawns 20 player-owned scouts (Twitch 2..21) next to the player."),
+
+    # Info — chat answers, implemented bridge-side in economy.py (no MD cue).
+    # nicknames MUST mirror COMMAND_ALIASES there; tools/test_md_sync.py enforces it.
+    StoreEvent(id="balance", buy_key="balance", nicknames=["bal", "coins", "money"],
+               kind="info", tier=0, category="Info", status="live",
+               label="Balance", description="Shows your coin balance and karma in chat."),
+    StoreEvent(id="karma", buy_key="karma", nicknames=["whatiskarma", "rep"],
+               kind="info", tier=0, category="Info", status="live",
+               label="Karma", description="Explains karma and shows yours."),
+    StoreEvent(id="shop", buy_key="shop",
+               nicknames=["catalog", "store", "purchaselist", "instructions", "commands", "help"],
+               kind="info", tier=0, category="Info", status="live",
+               label="Shop", description="Lists what you can buy (this page)."),
 
     # Tier 0 — Pure Interaction (identity / flavour) ------------------------
     StoreEvent(id="name_ship", buy_key="nameship", cost=120, karma="neutral", tier=0,
@@ -189,9 +214,9 @@ CATALOG: list[StoreEvent] = [
                "scaled by raider count."),
 
     # Suggested (community ideas accepted into the list; not committed) ------
-    StoreEvent(id="satellite_web", buy_key="sats", cost=300, karma="good", tier=0,
-               category="Gifts", status="suggested",
-               label="Satellite web", description="Deploy a ring of advanced satellites "
+    StoreEvent(id="vision", buy_key="vision", nicknames=["sats"], cost=300,
+               karma="good", tier=1, category="Gifts", status="suggested",
+               label="Vision", description="Deploy a ring of advanced satellites "
                "around the player's current sector."),
 ]
 

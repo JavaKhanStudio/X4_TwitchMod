@@ -30,6 +30,14 @@ tracker IS the catalog: no separate TODO list.
 - Verified: unit tests + Playwright in both modes (live `/catalog`; static via `http.server`
   in `docs/catalog/` with the companion down → falls back to `catalog.json`, back-link
   auto-hidden). README screenshots regenerated.
+- **Same-day follow-up:** `kind` field (`info` chat answers vs `effect` game changes — both
+  on the page, with filter chips; info syntax renders as a direct `!cmd`, not `!buy`);
+  `nicknames` field shown in a Nick column and accepted by the `!buy` lookup; new tier **-1
+  Debug** (dev plumbing — the spawn test moved there, out of the viewer economy);
+  `satellite_web`/`sats` renamed to `vision` and promoted to Minor. The live info commands
+  (`balance`, `karma`, `shop`) are now catalog entries; `test_md_sync.py` verifies info
+  liveness against `COMMAND_ALIASES` (id must be canonical, aliases must equal
+  buy_key+nicknames) so chat shortcuts can't drift from the public list.
 
 ## 2026-06-09 — Repo hygiene for going public
 - Hardened `.gitignore` (tokens, `viewers.json`, saves, `debuglog`, sockets, `*.so`, `*secret*`).

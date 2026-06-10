@@ -1,11 +1,13 @@
 [
  {
   "buy_key": "test",
+  "nicknames": [],
+  "kind": "effect",
   "label": "Test: spawn 20 ships",
   "description": "Spawns 20 player-owned scouts (Twitch 2..21) next to the player.",
   "category": "Test",
-  "tier": 0,
-  "tier_name": "Pure Interaction",
+  "tier": -1,
+  "tier_name": "Debug",
   "karma": "neutral",
   "syntax": "!buy test",
   "cost": 0,
@@ -17,7 +19,80 @@
   "enabled": true
  },
  {
+  "buy_key": "balance",
+  "nicknames": [
+   "bal",
+   "coins",
+   "money"
+  ],
+  "kind": "info",
+  "label": "Balance",
+  "description": "Shows your coin balance and karma in chat.",
+  "category": "Info",
+  "tier": 0,
+  "tier_name": "Pure Interaction",
+  "karma": "neutral",
+  "syntax": "!balance",
+  "cost": 0,
+  "cost_per_unit": null,
+  "unit": null,
+  "cooldown": 0.0,
+  "event_cap": 0,
+  "status": "live",
+  "enabled": true
+ },
+ {
+  "buy_key": "karma",
+  "nicknames": [
+   "whatiskarma",
+   "rep"
+  ],
+  "kind": "info",
+  "label": "Karma",
+  "description": "Explains karma and shows yours.",
+  "category": "Info",
+  "tier": 0,
+  "tier_name": "Pure Interaction",
+  "karma": "neutral",
+  "syntax": "!karma",
+  "cost": 0,
+  "cost_per_unit": null,
+  "unit": null,
+  "cooldown": 0.0,
+  "event_cap": 0,
+  "status": "live",
+  "enabled": true
+ },
+ {
+  "buy_key": "shop",
+  "nicknames": [
+   "catalog",
+   "store",
+   "purchaselist",
+   "instructions",
+   "commands",
+   "help"
+  ],
+  "kind": "info",
+  "label": "Shop",
+  "description": "Lists what you can buy (this page).",
+  "category": "Info",
+  "tier": 0,
+  "tier_name": "Pure Interaction",
+  "karma": "neutral",
+  "syntax": "!shop",
+  "cost": 0,
+  "cost_per_unit": null,
+  "unit": null,
+  "cooldown": 0.0,
+  "event_cap": 0,
+  "status": "live",
+  "enabled": true
+ },
+ {
   "buy_key": "nameship",
+  "nicknames": [],
+  "kind": "effect",
   "label": "Name a ship",
   "description": "Rename one of the player's ships.",
   "category": "Identity",
@@ -35,6 +110,8 @@
  },
  {
   "buy_key": "adoptship",
+  "nicknames": [],
+  "kind": "effect",
   "label": "Adopt a ship",
   "description": "A player ship is tagged as yours; chat is pinged when it scores a kill or dies.",
   "category": "Identity",
@@ -52,6 +129,8 @@
  },
  {
   "buy_key": "pirate",
+  "nicknames": [],
+  "kind": "effect",
   "label": "Pirate harassment",
   "description": "One S/M pirate jumps in to annoy the nearest player ship.",
   "category": "Combat",
@@ -69,6 +148,8 @@
  },
  {
   "buy_key": "ware",
+  "nicknames": [],
+  "kind": "effect",
   "label": "Gift wares",
   "description": "Drop wares near the player; price scales with qty.",
   "category": "Gifts",
@@ -86,6 +167,8 @@
  },
  {
   "buy_key": "khaak",
+  "nicknames": [],
+  "kind": "effect",
   "label": "Kha'ak swarm",
   "description": "A cluster of Kha'ak fighters jumps in and attacks.",
   "category": "Combat",
@@ -103,6 +186,8 @@
  },
  {
   "buy_key": "giftship",
+  "nicknames": [],
+  "kind": "effect",
   "label": "Gift a ship",
   "description": "Gift the player a ship (class sets the price band).",
   "category": "Gifts",
@@ -120,6 +205,8 @@
  },
  {
   "buy_key": "xenonk",
+  "nicknames": [],
+  "kind": "effect",
   "label": "Xenon K",
   "description": "A Xenon K destroyer jumps into the player's sector.",
   "category": "Doom",
@@ -137,6 +224,8 @@
  },
  {
   "buy_key": "reinforcements",
+  "nicknames": [],
+  "kind": "effect",
   "label": "Raid reinforcements",
   "description": "A raid sends friendly reinforcements, scaled by raider count.",
   "category": "Gifts",
@@ -153,14 +242,18 @@
   "enabled": true
  },
  {
-  "buy_key": "sats",
-  "label": "Satellite web",
+  "buy_key": "vision",
+  "nicknames": [
+   "sats"
+  ],
+  "kind": "effect",
+  "label": "Vision",
   "description": "Deploy a ring of advanced satellites around the player's current sector.",
   "category": "Gifts",
-  "tier": 0,
-  "tier_name": "Pure Interaction",
+  "tier": 1,
+  "tier_name": "Minor Distraction",
   "karma": "good",
-  "syntax": "!buy sats",
+  "syntax": "!buy vision",
   "cost": 300,
   "cost_per_unit": null,
   "unit": null,
