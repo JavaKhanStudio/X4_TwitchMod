@@ -6,7 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from twitch_bridge.catalog import CATALOG, KARMA, STARTER, TIERS, StoreEvent, catalog_view  # noqa: E402
+from twitch_bridge.catalog import (  # noqa: E402
+    CATALOG, KARMA, STARTER, STATUS, TIERS, StoreEvent, catalog_view)
 
 ok = True
 
@@ -28,6 +29,7 @@ check(len(set(ids)) == len(ids), "ids are unique")
 for e in CATALOG:
     check(e.karma in KARMA, f"{e.id}: karma '{e.karma}' valid")
     check(e.tier in TIERS, f"{e.id}: tier {e.tier} valid")
+    check(e.status in STATUS, f"{e.id}: status '{e.status}' valid")
     if e.variable:
         check(e.unit in e.args, f"{e.id}: variable event's unit '{e.unit}' is an arg")
 
@@ -47,8 +49,9 @@ check(ri.syntax.startswith("(auto on"), "event-triggered syntax string")
 # display() shape + item-list view.
 d = ns.display()
 for key in ("buy_key", "label", "description", "category", "tier", "tier_name",
-            "karma", "syntax", "cost", "enabled"):
+            "karma", "syntax", "cost", "status", "enabled"):
     check(key in d, f"display() has '{key}'")
+check(d["status"] == "planned", "status defaults to 'planned' and is projected")
 check(d["tier_name"] == "Pure Interaction", "tier_name resolved from TIERS")
 
 view = catalog_view()  # enabled_only=True

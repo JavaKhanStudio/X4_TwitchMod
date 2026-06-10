@@ -13,6 +13,7 @@ import json
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from .catalog import catalog_view
 from .status import Status
@@ -210,75 +211,18 @@ tick(); setInterval(tick,1000);
 </script></body></html>"""
 
 
-CATALOG_PAGE = """<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Catalog — X4 ⇄ Twitch</title>
-<style>
-  :root{--bg:#0e0f1a;--card:#181a2b;--line:#272a42;--txt:#e7e9f5;--dim:#9aa0c3;--tw:#9146ff}
-  *{box-sizing:border-box}
-  body{margin:0;background:#0e0f1a;color:var(--txt);font:14px/1.5 ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif}
-  .wrap{max-width:980px;margin:0 auto;padding:22px}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-  h1{font-size:18px;margin:0}.sub{color:var(--dim);margin:0 0 16px}
-  a.back{color:#56b6ff;text-decoration:none;font-size:13px}
-  .controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
-  input.search{flex:1;min-width:160px;background:var(--card);border:1px solid var(--line);color:var(--txt);
-    border-radius:9px;padding:8px 12px;font-size:14px}
-  .chip{background:var(--card);border:1px solid var(--line);color:var(--dim);border-radius:999px;
-    padding:5px 11px;font-size:12px;cursor:pointer;user-select:none}
-  .chip.on{background:#9146ff22;border-color:var(--tw);color:#cbb6ff}
-  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  th,td{text-align:left;padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
-  th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);cursor:pointer;border-top:0}
-  td.buy{font-family:ui-monospace,monospace;color:#56b6ff;white-space:nowrap}
-  td.cost{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
-  .b{font-size:10px;font-weight:800;text-transform:uppercase;padding:1px 7px;border-radius:6px;white-space:nowrap}
-  .t0{background:#37d67a22;color:#7ee2a8}.t1{background:#56b6ff22;color:#8cd0ff}
-  .t2{background:#f5a62322;color:#ffce7a}.t3{background:#ec5b5b22;color:#ff9a9a}
-  .k-good{color:#7ee2a8}.k-neutral{color:var(--dim)}.k-bad{color:#ffce7a}.k-doom{color:#ff9a9a}
-  .desc{color:var(--dim);font-size:13px}
-  .empty{color:var(--dim);padding:20px;text-align:center}
-</style></head><body><div class="wrap">
-  <header><h1>🛒 Viewer Catalog</h1></header>
-  <p class="sub"><a class="back" href="/">← back to dashboard</a> · what viewers can buy with coins · live from the companion</p>
-  <div class="controls">
-    <input class="search" id="q" placeholder="search name / description / key…">
-    <span class="chip on" data-tier="all">All tiers</span>
-    <span class="chip" data-tier="0">Pure</span><span class="chip" data-tier="1">Minor</span>
-    <span class="chip" data-tier="2">Major</span><span class="chip" data-tier="3">Doom</span>
-  </div>
-  <table><thead><tr>
-    <th data-k="buy_key">Buy</th><th data-k="label">Name</th><th data-k="cost">Cost</th>
-    <th data-k="tier">Tier</th><th data-k="karma">Karma</th><th data-k="cooldown">CD</th><th>What it does</th>
-  </tr></thead><tbody id="rows"></tbody></table>
-  <div class="empty" id="empty" style="display:none">No matching events.</div>
-</div>
-<script>
-const $=s=>document.querySelector(s);
-const TIERN={0:'Pure',1:'Minor',2:'Major',3:'Doom'};
-let DATA=[], tier='all', q='', sortK='cost', asc=true;
-function esc(t){return (t??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
-function cost(r){return r.cost_per_unit?(r.cost_per_unit+'/'+(r.unit||'unit')):r.cost}
-function render(){
-  let rows=DATA.filter(r=>(tier==='all'||r.tier==+tier));
-  if(q){const s=q.toLowerCase();rows=rows.filter(r=>(r.label+' '+r.description+' '+r.buy_key).toLowerCase().includes(s))}
-  rows.sort((a,b)=>{let x=a[sortK],y=b[sortK];if(typeof x==='string'){return asc?(''+x).localeCompare(y):(''+y).localeCompare(x)}return asc?x-y:y-x});
-  $('#rows').innerHTML=rows.map(r=>`<tr>
-    <td class="buy">${esc(r.syntax)}</td><td>${esc(r.label)}</td>
-    <td class="cost">${esc(cost(r))}</td>
-    <td><span class="b t${r.tier}">${TIERN[r.tier]}</span></td>
-    <td class="k-${esc(r.karma)}">${esc(r.karma)}</td>
-    <td>${r.cooldown?Math.round(r.cooldown)+'s':'—'}</td>
-    <td class="desc">${esc(r.description)}</td></tr>`).join('');
-  $('#empty').style.display=rows.length?'none':'';
-}
-async function load(){try{DATA=await (await fetch('/api/catalog',{cache:'no-store'})).json();render();}catch(e){$('#empty').textContent='companion offline';$('#empty').style.display='';}}
-$('#q').addEventListener('input',e=>{q=e.target.value;render()});
-document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');tier=c.dataset.tier;render()});
-document.querySelectorAll('th[data-k]').forEach(h=>h.onclick=()=>{const k=h.dataset.k;asc=(sortK===k)?!asc:true;sortK=k;render()});
-load();
-</script></body></html>"""
+# The catalog/roadmap page is a real file so the SAME page can be published on
+# GitHub Pages (with the exported catalog.json) and served live here. Read per
+# request: it is tiny, and edits show on refresh during dev.
+_CATALOG_HTML = Path(__file__).resolve().parents[2] / "docs" / "catalog" / "index.html"
+
+
+def _catalog_page() -> bytes:
+    try:
+        return _CATALOG_HTML.read_bytes()
+    except OSError:
+        return (b"<h1>catalog page not found</h1><p>expected at docs/catalog/index.html "
+                b"in the repo; the data is still at /api/catalog?all=1</p>")
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -298,11 +242,15 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/status"):
             self._send(200, json.dumps(self.status.snapshot()).encode(), "application/json")
         elif self.path.startswith("/api/catalog"):
-            self._send(200, json.dumps(catalog_view()).encode(), "application/json")
+            # ?all=1 -> the full roadmap (every status, disabled included); default
+            # stays the viewer-facing enabled-only projection.
+            full = "all=1" in self.path
+            self._send(200, json.dumps(catalog_view(enabled_only=not full)).encode(),
+                       "application/json")
         elif self.path in ("/", "/index.html"):
             self._send(200, PAGE.encode(), "text/html; charset=utf-8")
         elif self.path.startswith("/catalog"):
-            self._send(200, CATALOG_PAGE.encode(), "text/html; charset=utf-8")
+            self._send(200, _catalog_page(), "text/html; charset=utf-8")
         else:
             self._send(404, b"not found", "text/plain")
 

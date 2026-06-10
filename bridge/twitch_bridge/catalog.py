@@ -64,6 +64,15 @@ STARTER = [
 TIERS = {0: "Pure Interaction", 1: "Minor Distraction", 2: "Major Distraction", 3: "Doom"}
 # Reputation effect on the buyer's karma (doc 08 §3).
 KARMA = ("good", "neutral", "bad", "doom")
+# Implementation status — the catalog doubles as the interactions roadmap, so every
+# idea gets an entry the moment it exists; `status` tracks DEV progress (orthogonal
+# to `enabled`, which is streamer config). tools/test_md_sync.py enforces that
+# "live" matches what the MD script really implements (cue exists, TODO-free).
+#   live      — works in the game now
+#   wip       — being built (MD cue is a stub, or bridge wiring incomplete)
+#   planned   — designed (the entry itself IS the design) but not started
+#   suggested — community/viewer idea accepted into the list, not committed yet
+STATUS = ("live", "wip", "planned", "suggested")
 
 
 @dataclass
@@ -95,6 +104,7 @@ class StoreEvent:
     tier: int = 0                    # 0 Pure / 1 Minor / 2 Major / 3 Doom (§5)
 
     # --- lifecycle ---
+    status: str = "planned"          # dev progress: live | wip | planned | suggested
     default_enabled: bool = True     # ships enabled? (Major/Doom default False)
     enabled: bool = True             # current streamer setting (runtime-overridable)
 
@@ -126,6 +136,7 @@ class StoreEvent:
             "unit": self.unit,
             "cooldown": self.cooldown,
             "event_cap": self.event_cap,
+            "status": self.status,
             "enabled": self.enabled,
         }
 
@@ -134,6 +145,12 @@ class StoreEvent:
 # the schema: fixed + variable cost, args, on_event triggers, all 4 tiers, karma,
 # default-off destructive tiers. Costs are first-draft (doc 08 §5.1).
 CATALOG: list[StoreEvent] = [
+    # DEV TEST — `!buy test` -> id "spawn" -> the MD Twitch_OnSpawn cue (spawns 20
+    # named scouts). Free, so it's easy to fire. Remove once real effects are wired.
+    StoreEvent(id="spawn", buy_key="test", cost=0, karma="neutral", tier=0,
+               category="Test", label="Test: spawn 20 ships", status="live",
+               description="Spawns 20 player-owned scouts (Twitch 2..21) next to the player."),
+
     # Tier 0 — Pure Interaction (identity / flavour) ------------------------
     StoreEvent(id="name_ship", buy_key="nameship", cost=120, karma="neutral", tier=0,
                category="Identity", args=["name"],
@@ -167,9 +184,15 @@ CATALOG: list[StoreEvent] = [
 
     # Event-triggered (not !buy) — fire on Twitch events --------------------
     StoreEvent(id="reinforcements", buy_key="reinforcements", cost=0, karma="good", tier=1,
-               on_event="raid", category="Gifts",
+               on_event="raid", category="Gifts", status="wip",  # MD cue exists, effect is a stub
                label="Raid reinforcements", description="A raid sends friendly reinforcements, "
                "scaled by raider count."),
+
+    # Suggested (community ideas accepted into the list; not committed) ------
+    StoreEvent(id="satellite_web", buy_key="sats", cost=300, karma="good", tier=0,
+               category="Gifts", status="suggested",
+               label="Satellite web", description="Deploy a ring of advanced satellites "
+               "around the player's current sector."),
 ]
 
 
