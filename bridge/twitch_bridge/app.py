@@ -17,12 +17,12 @@ from .dashboard import Dashboard
 from .economy import Economy
 from .sources import make_source
 from .wallet import Wallet
-from .x4link import X4Link
+from .x4link import BaseX4Link, make_x4_link
 
 log = logging.getLogger("app")
 
 
-async def _poll_x4(link: X4Link, status) -> None:
+async def _poll_x4(link: BaseX4Link, status) -> None:
     """Mirror the X4 link state into the dashboard status (decoupled from X4Link)."""
     prev = None
     try:
@@ -100,8 +100,8 @@ async def main(config: Config) -> None:
         status.record_action(msg)
         await source.handle_action(msg)
 
-    link = X4Link(config.socket_path, on_message=on_x4_message,
-                  reconnect_delay=config.reconnect_delay)
+    link = make_x4_link(config.socket_path, on_message=on_x4_message,
+                        reconnect_delay=config.reconnect_delay)
 
     dash = None
     if config.dashboard:

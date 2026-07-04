@@ -15,7 +15,7 @@ PIPE_NAME = "twitch"
 
 def _default_socket() -> str:
     # Windows: X4's winpipe connects (as CLIENT) to \\.\pipe\<name>; the bridge
-    # HOSTS that pipe (see x4link._run_win_server + docs/02 Path A).
+    # HOSTS that pipe (see x4link/winpipe.py + docs/02 Path A).
     if sys.platform == "win32":
         return r"\\.\pipe\%s" % PIPE_NAME
 

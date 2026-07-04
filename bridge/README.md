@@ -15,7 +15,10 @@ lets you drive the whole pipeline by hand.
 twitch_bridge/
   protocol.py     wire format (newline-JSON) + message constructors
   config.py       env-driven config (socket path, source, Twitch creds)
-  x4link.py       Unix-socket client to X4, with reconnect
+  x4link/         transport to X4 (one interface, two impls, factory-selected)
+    base.py       shared: framing-safe send, read loop, connection state
+    unixsocket.py Linux: connect as CLIENT to the socket X4 hosts
+    winpipe.py    Windows: HOST \\.\pipe\twitch; X4 connects as CLIENT
   app.py          wires source <-> x4link
   __main__.py     `python -m twitch_bridge`
   sources/
