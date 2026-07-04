@@ -286,9 +286,19 @@
         <set_value name="$byKey.{'split'}"     exact="faction.split"/>
         <set_value name="$byKey.{'freesplit'}" exact="faction.freesplit"/>
 
-        <!-- try the two specified factions from the buy args (null-safe lookups) -->
-        <set_value name="$facA" exact="@$byKey.{@event.param3.$args.$faction1}"/>
-        <set_value name="$facB" exact="@$byKey.{@event.param3.$args.$faction2}"/>
+        <!-- the two specified factions from the buy args. The ui lua passes args as
+             a FLAT table, so each is event.param3.$<key> (one level; nested tables
+             do NOT round-trip Lua->MD). Null-safe: absent/unknown -> null -> random. -->
+        <set_value name="$key1" exact="@event.param3.$faction1"/>
+        <set_value name="$key2" exact="@event.param3.$faction2"/>
+        <set_value name="$facA" exact="null"/>
+        <set_value name="$facB" exact="null"/>
+        <do_if value="$key1?">
+          <set_value name="$facA" exact="@$byKey.{$key1}"/>
+        </do_if>
+        <do_if value="$key2?">
+          <set_value name="$facB" exact="@$byKey.{$key2}"/>
+        </do_if>
 
         <!-- fall back to two random DISTINCT factions if not both specified/valid -->
         <do_if value="not $facA? or not $facB? or $facA == $facB">
