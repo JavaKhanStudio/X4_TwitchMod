@@ -94,6 +94,190 @@
       </actions>
     </cue>
 
+    <!-- DIAGNOSTIC: echo the single arg MD receives back to chat, to isolate the
+         arg-passing path (bridge -> lua flat table -> MD read). If '!argtest hello'
+         replies "argtest OK: [hello]" the whole path works; "NO ARG" means the arg
+         didn't arrive; no reply at all means this updated mod isn't loaded (reload
+         the save / restart X4). Remove once args are confirmed working. -->
+    <cue name="Twitch_OnArgTest" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'argtest'"/>
+      </conditions>
+      <actions>
+        <!-- non-incident commands send a plain ';'-joined string; echo it. -->
+        <set_value name="$s" exact="@event.param3"/>
+        <do_if value="$s?">
+          <signal_cue_instantly cue="Twitch_Say" param="'argtest str=[' + $s + ']'"/>
+        </do_if>
+        <do_else>
+          <signal_cue_instantly cue="Twitch_Say" param="'argtest str=NULL'"/>
+        </do_else>
+      </actions>
+    </cue>
+
+    <!-- Report the player's COMBAT (fight) rank to chat. Read-only query, no args.
+         X4 tracks fighting as global statistics (libraries/stats.xml), not as a
+         player property:
+           * stat.fight_rank    — the named combat rank: a level 0..30 mapped from
+                                  fight_score by the <mapto> table in stats.xml.
+           * stat.fight_score   — the accumulated weighted score that drives the rank
+                                  (small-ship kill +1, capital +30, module +10,
+                                  turret +3, ...; all integer, so it stays whole).
+           * stat.ships_destroyed — the raw kill count (what chat calls "kills").
+         READ IDIOM (verified LIVE 2026-07-04): the global stat keyword returns the
+         numeric value DIRECTLY and BARE — `@stat.<id>` IS the number, never
+         `stat.<id>.value` and never guarded with `?` (the `?`/`.exists`/`.value`
+         forms all fail on it and read as null; that was the original bug). Mirrors
+         vanilla md/notifications.xml `value="@stat.sectors_discovered"`. `@` yields
+         null for a stat not yet recorded, so read into a var and coalesce to 0.
+         The rank NAME is not on the stat; fetch it from the TextDB by rank number:
+         readtext.{20219}.{2001 + 10*rank} (Harmless=0 .. Commander=14 .. X-TREME=30).
+         $nextscore mirrors the fight_rank <mapto> thresholds in stats.xml (X4 8.00):
+         $nextscore.{r} = min fight_score to REACH rank r, so "kills to next" is
+         reported as fight score to the next threshold (rank is score-, not
+         kill-based, so an exact kill count to next can't be given). -->
+    <cue name="Twitch_OnRank" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'rank'"/>
+      </conditions>
+      <actions>
+        <!-- read bare + unguarded; coalesce a not-yet-recorded (null) stat to 0 -->
+        <set_value name="$rank"  exact="@stat.fight_rank"/>
+        <set_value name="$score" exact="@stat.fight_score"/>
+        <set_value name="$kills" exact="@stat.ships_destroyed"/>
+        <do_if value="not $rank?"><set_value name="$rank" exact="0"/></do_if>
+        <do_if value="not $score?"><set_value name="$score" exact="0"/></do_if>
+        <do_if value="not $kills?"><set_value name="$kills" exact="0"/></do_if>
+
+        <!-- rank title from the TextDB (page 20219, id 2001 + 10*rank) -->
+        <set_value name="$title" exact="readtext.{20219}.{2001 + 10 * $rank}"/>
+
+        <!-- min fight_score to REACH ranks 1..30 (index r -> rank r) -->
+        <set_value name="$nextscore" exact="[1, 3, 5, 7, 10, 14, 20, 29, 42, 60, 87, 130, 190, 280, 410, 590, 860, 1200, 1700, 2500, 3600, 5200, 7500, 11000, 16000, 23000, 33000, 48000, 70000, 100000]"/>
+
+        <set_value name="$msg" exact="'Commander combat rank: ' + $title + ' (rank ' + $rank + '/30) — ' + $kills + ' ships destroyed'"/>
+        <do_if value="$rank ge 30">
+          <set_value name="$msg" exact="$msg + '. Maximum fight rank reached!'"/>
+        </do_if>
+        <do_else>
+          <set_value name="$need" exact="$nextscore.{$rank + 1} - $score"/>
+          <do_if value="$need lt 1"><set_value name="$need" exact="1"/></do_if>
+          <set_value name="$msg" exact="$msg + '. ' + $need + ' more fight score to rank ' + ($rank + 1) + '.'"/>
+        </do_else>
+
+        <debug_text text="'[Twitch] rank: %s (r%s score %s kills %s)'.[$title, $rank, $score, $kills]" filter="general"/>
+        <signal_cue_instantly cue="Twitch_Say" param="$msg"/>
+      </actions>
+    </cue>
+
+    <!-- Report the player's ECONOMIC (trade) rank to chat. Symmetric to the combat
+         cue above: stat.trade_rank is a level 0..30 mapped from stat.trade_score
+         (both read bare + unguarded, see the combat cue's notes). Names live on the
+         same TextDB page 20219 but id 1001 + 10*rank (Salesman=0 .. X-TREME=30).
+         $nextscore mirrors the trade_rank <mapto> thresholds in stats.xml (min
+         trade_score to REACH each rank). -->
+    <cue name="Twitch_OnTradeRank" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'traderank'"/>
+      </conditions>
+      <actions>
+        <set_value name="$rank"  exact="@stat.trade_rank"/>
+        <set_value name="$score" exact="@stat.trade_score"/>
+        <do_if value="not $rank?"><set_value name="$rank" exact="0"/></do_if>
+        <do_if value="not $score?"><set_value name="$score" exact="0"/></do_if>
+
+        <set_value name="$title" exact="readtext.{20219}.{1001 + 10 * $rank}"/>
+        <set_value name="$nextscore" exact="[1, 8, 18, 32, 57, 100, 180, 320, 580, 1000, 1800, 3200, 5800, 10000, 18000, 32000, 58000, 100000, 180000, 320000, 580000, 1000000, 1800000, 3200000, 5800000, 10000000, 18000000, 32000000, 58000000, 100000000]"/>
+
+        <set_value name="$msg" exact="'Commander trade rank: ' + $title + ' (rank ' + $rank + '/30)'"/>
+        <do_if value="$rank ge 30">
+          <set_value name="$msg" exact="$msg + '. Maximum trade rank reached!'"/>
+        </do_if>
+        <do_else>
+          <set_value name="$need" exact="$nextscore.{$rank + 1} - $score"/>
+          <do_if value="$need lt 1"><set_value name="$need" exact="1"/></do_if>
+          <set_value name="$msg" exact="$msg + '. ' + $need + ' more trade score to rank ' + ($rank + 1) + '.'"/>
+        </do_else>
+
+        <debug_text text="'[Twitch] traderank: %s (r%s score %s)'.[$title, $rank, $score]" filter="general"/>
+        <signal_cue_instantly cue="Twitch_Say" param="$msg"/>
+      </actions>
+    </cue>
+
+    <!-- ===== generic "level up" watcher (data-driven poll) ==================
+         X4 exposes NO rank-change event (searched vanilla md 2026-07-04), so we
+         POLL. This is a REUSABLE pattern: a single self-signalling loop watches a
+         LIST of metrics and shouts in chat whenever any of them rises. To track a
+         new rank, add ONE read (into a var, null->0) plus ONE row to $metrics — the
+         compare/announce/carry-forward logic below is metric-agnostic. State (the
+         previous snapshot) rides forward in the loop's own signal param, so no
+         cross-cue variables are needed.
+
+         Each $metrics row is a table:
+           $label  chat word for the announce ("Combat", "Trade", ...)
+           $page   TextDB page for the rank name
+           $base   name id = readtext.{$page}.{$base + 10 * value}
+           $max    top rank (shown as "/N")
+           $cur    the freshly-read current level (null coalesced to 0)
+
+         Twitch_RankWatchStart (re)seeds on every Named_Pipes.Reloaded (new game /
+         save load / ui reload) and CANCELS the running loop first (cancel_cue also
+         cancels the instance waiting in <delay>), so a reload can never stack a
+         second poller. The first tick after (re)seed has no prior snapshot (null
+         param) and only establishes the baseline — so it never fires a false
+         level-up from a stale value; the trade-off is that a rank-up within the
+         first ~20s after a load isn't announced. -->
+    <cue name="Twitch_RankWatchStart" instantiate="true">
+      <conditions>
+        <event_cue_signalled cue="md.Named_Pipes.Reloaded"/>
+      </conditions>
+      <actions>
+        <cancel_cue cue="Twitch_RankWatch"/>
+        <signal_cue cue="Twitch_RankWatch"/>   <!-- no param => baseline seed tick -->
+      </actions>
+    </cue>
+
+    <cue name="Twitch_RankWatch" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <delay exact="20s"/>
+      <actions>
+        <!-- ===== TRACKED METRICS — the ONLY per-rank part (read + one row) ==== -->
+        <set_value name="$vFight" exact="@stat.fight_rank"/>
+        <do_if value="not $vFight?"><set_value name="$vFight" exact="0"/></do_if>
+        <set_value name="$vTrade" exact="@stat.trade_rank"/>
+        <do_if value="not $vTrade?"><set_value name="$vTrade" exact="0"/></do_if>
+
+        <set_value name="$metrics" exact="[]"/>
+        <append_to_list name="$metrics" exact="table[$label='Combat', $page=20219, $base=2001, $max=30, $cur=$vFight]"/>
+        <append_to_list name="$metrics" exact="table[$label='Trade', $page=20219, $base=1001, $max=30, $cur=$vTrade]"/>
+
+        <!-- ===== generic compare + announce (metric-agnostic) ================ -->
+        <do_if value="@event.param?">   <!-- prior snapshot exists: compare rows by index -->
+          <set_value name="$prev" exact="event.param"/>
+          <set_value name="$i" exact="1"/>
+          <do_while value="$i le $metrics.count">
+            <set_value name="$m" exact="$metrics.{$i}"/>
+            <set_value name="$old" exact="0"/>
+            <do_if value="$i le $prev.count">
+              <set_value name="$old" exact="$prev.{$i}.$cur"/>
+            </do_if>
+            <do_if value="$m.$cur gt $old">
+              <set_value name="$name" exact="readtext.{$m.$page}.{$m.$base + 10 * $m.$cur}"/>
+              <signal_cue_instantly cue="Twitch_Say"
+                param="'LEVEL UP! ' + $m.$label + ' rank increased to ' + $name + ' (rank ' + $m.$cur + '/' + $m.$max + ')!'"/>
+            </do_if>
+            <set_value name="$i" exact="$i + 1"/>
+          </do_while>
+        </do_if>
+        <!-- else: seed tick — silently establish the baseline -->
+
+        <!-- re-arm the loop, carrying this snapshot forward as the new baseline -->
+        <signal_cue cue="Twitch_RankWatch" param="$metrics"/>
+      </actions>
+    </cue>
+
     <cue name="Twitch_OnSpawn" instantiate="true">
       <conditions>
         <event_ui_triggered screen="'Twitch_Integration'" control="'spawn'"/>
@@ -236,6 +420,55 @@
       </actions>
     </cue>
 
+    <!-- Buy the PLAYER any ship, with a RANDOM loadout. The bridge (ships.py) picks
+         the ship, charges coins scaled to its value, and sends the chosen macro as
+         the single arg -> the ui lua ';'-joins arg values, so event.param3 IS the
+         macro string (e.g. "ship_ter_m_corvette_01_a_macro"). We turn that string
+         into a macro with macro.{$macro} (base-game idiom, verified in 08.dat) and
+         create_ship it, player-owned beside the player. "Equip at random" = a rolled
+         equipment quality (0.3..1.0, int roll/10 => known-good float) + weapon-count
+         <variation>, same loadout idiom as the spawn/pirate/reinforcement cues. -->
+    <cue name="Twitch_OnGiftShip" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'gift_ship'"/>
+      </conditions>
+      <actions>
+        <set_value name="$macro" exact="@event.param3"/>
+        <debug_text text="'[Twitch] gift ship: %s'.[$macro]" filter="general"/>
+        <do_if value="player.occupiedship.exists">
+          <set_value name="$ref" exact="player.occupiedship"/>
+        </do_if>
+        <do_else>
+          <set_value name="$ref" exact="player.entity"/>
+        </do_else>
+        <do_if value="$ref.exists and $macro?">
+          <!-- random equipment quality 0.3..1.0 (roll int / 10 => known-good float) -->
+          <set_value name="$qr" min="3" max="10"/>
+          <set_value name="$q" exact="$qr / 10.0"/>
+          <create_ship name="$gift" macro="macro.{$macro}" zone="player.zone">
+            <owner exact="faction.player" overridenpc="true"/>
+            <pilot>
+              <select race="[race.argon, race.paranid, race.teladi]" tags="tag.aipilot"/>
+            </pilot>
+            <loadout>
+              <quantity exact="1.0"><variation exact="0.5"/></quantity>
+              <quality exact="$q"/>
+            </loadout>
+            <safepos object="$ref" x="0" y="0" z="3km"/>
+          </create_ship>
+          <do_if value="$gift?">
+            <set_object_name object="$gift" name="'Twitch Gift'"/>
+            <debug_text text="'[Twitch] ship gifted from %s (quality %s)'.[$macro, $q]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Say"
+              param="'A new ship has been delivered to the player (random loadout).'"/>
+          </do_if>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] ship gift skipped: no player ref or macro'" filter="general"/>
+        </do_else>
+      </actions>
+    </cue>
+
     <cue name="Twitch_OnSubReward" instantiate="true">
       <conditions>
         <event_ui_triggered screen="'Twitch_Integration'" control="'sub_reward'"/>
@@ -270,45 +503,63 @@
       </conditions>
       <actions>
         <set_value name="$factions" exact="[faction.argon, faction.antigone, faction.hatikvah, faction.teladi, faction.ministry, faction.paranid, faction.holyorder, faction.trinity, faction.alliance, faction.terran, faction.pioneers, faction.boron, faction.split, faction.freesplit]"/>
-        <set_value name="$byKey" exact="table[]"/>
-        <set_value name="$byKey.{'argon'}"     exact="faction.argon"/>
-        <set_value name="$byKey.{'antigone'}"  exact="faction.antigone"/>
-        <set_value name="$byKey.{'hatikvah'}"  exact="faction.hatikvah"/>
-        <set_value name="$byKey.{'teladi'}"    exact="faction.teladi"/>
-        <set_value name="$byKey.{'ministry'}"  exact="faction.ministry"/>
-        <set_value name="$byKey.{'paranid'}"   exact="faction.paranid"/>
-        <set_value name="$byKey.{'holyorder'}" exact="faction.holyorder"/>
-        <set_value name="$byKey.{'trinity'}"   exact="faction.trinity"/>
-        <set_value name="$byKey.{'alliance'}"  exact="faction.alliance"/>
-        <set_value name="$byKey.{'terran'}"    exact="faction.terran"/>
-        <set_value name="$byKey.{'pioneers'}"  exact="faction.pioneers"/>
-        <set_value name="$byKey.{'boron'}"     exact="faction.boron"/>
-        <set_value name="$byKey.{'split'}"     exact="faction.split"/>
-        <set_value name="$byKey.{'freesplit'}" exact="faction.freesplit"/>
-
-        <!-- the two specified factions from the buy args. The ui lua passes args as
-             a FLAT table, so each is event.param3.$<key> (one level; nested tables
-             do NOT round-trip Lua->MD). Null-safe: absent/unknown -> null -> random. -->
-        <set_value name="$key1" exact="@event.param3.$faction1"/>
-        <set_value name="$key2" exact="@event.param3.$faction2"/>
+        <!-- The ui lua sends a ';'-joined STRING (e.g. "argon;paranid" or "argon").
+             Only STRINGS marshal Lua->MD (tables arrive NOTABLE, numbers are dropped —
+             verified via tools/x4_probe.py). $keys is PARALLEL to $factions; resolve
+             by string comparison / .indexof. -->
+        <set_value name="$keys" exact="['argon', 'antigone', 'hatikvah', 'teladi', 'ministry', 'paranid', 'holyorder', 'trinity', 'alliance', 'terran', 'pioneers', 'boron', 'split', 'freesplit']"/>
+        <set_value name="$in" exact="@event.param3"/>
+        <do_if value="not $in?">
+          <set_value name="$in" exact="''"/>
+        </do_if>
+        <!-- ALL primitives verified live via x4_probe (in arrives, count=14, list
+             indexing + .name + random pick + string == all work). The ONLY thing that
+             broke everything was `and` inside a do_while CONDITION — so NO `and` in any
+             loop condition here; early-break is done by jumping the counters. `and` in
+             a do_if is fine (used below). -->
+        <set_value name="$cnt" exact="$factions.count"/>
         <set_value name="$facA" exact="null"/>
         <set_value name="$facB" exact="null"/>
-        <do_if value="$key1?">
-          <set_value name="$facA" exact="@$byKey.{$key1}"/>
-        </do_if>
-        <do_if value="$key2?">
-          <set_value name="$facB" exact="@$byKey.{$key2}"/>
+
+        <!-- ONE named faction: $in == a single key (O(14), always safe). -->
+        <set_value name="$i" exact="1"/>
+        <do_while value="$i le $cnt">
+          <do_if value="$in == $keys.{$i}">
+            <set_value name="$facA" exact="$factions.{$i}"/>
+          </do_if>
+          <set_value name="$i" exact="$i + 1"/>
+        </do_while>
+
+        <!-- TWO named factions "keyI;keyJ" — only when not a single match and $in is
+             non-empty (so single/none never run this loop). Break by jumping i,j. -->
+        <do_if value="not $facA? and $in != ''">
+          <set_value name="$i" exact="1"/>
+          <do_while value="$i le $cnt">
+            <set_value name="$j" exact="1"/>
+            <do_while value="$j le $cnt">
+              <do_if value="$i != $j and ($in == ($keys.{$i} + ';' + $keys.{$j}))">
+                <set_value name="$facA" exact="$factions.{$i}"/>
+                <set_value name="$facB" exact="$factions.{$j}"/>
+                <set_value name="$i" exact="99"/>
+                <set_value name="$j" exact="99"/>
+              </do_if>
+              <set_value name="$j" exact="$j + 1"/>
+            </do_while>
+            <set_value name="$i" exact="$i + 1"/>
+          </do_while>
         </do_if>
 
-        <!-- fall back to two random DISTINCT factions if not both specified/valid -->
-        <do_if value="not $facA? or not $facB? or $facA == $facB">
-          <set_value name="$i" min="1" max="$factions.count"/>
-          <set_value name="$facA" exact="$factions.{$i}"/>
-          <set_value name="$j" exact="$i"/>
-          <do_while value="$j == $i">
-            <set_value name="$j" min="1" max="$factions.count"/>
+        <!-- fill unset sides with random factions (random pick verified working). -->
+        <do_if value="not $facA?">
+          <set_value name="$r" min="1" max="$factions.count"/>
+          <set_value name="$facA" exact="$factions.{$r}"/>
+        </do_if>
+        <do_if value="not $facB?">
+          <set_value name="$facB" exact="$facA"/>
+          <do_while value="$facB == $facA">
+            <set_value name="$r" min="1" max="$factions.count"/>
+            <set_value name="$facB" exact="$factions.{$r}"/>
           </do_while>
-          <set_value name="$facB" exact="$factions.{$j}"/>
         </do_if>
 
         <!-- sour their standing (game diplomacy system) -->

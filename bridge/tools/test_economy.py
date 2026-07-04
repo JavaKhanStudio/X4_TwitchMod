@@ -6,8 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from twitch_bridge import ships  # noqa: E402
 from twitch_bridge.catalog import StoreEvent  # noqa: E402
 from twitch_bridge.economy import Economy  # noqa: E402
+from twitch_bridge.runtime import Runtime  # noqa: E402
 from twitch_bridge.wallet import EconomySettings, Wallet  # noqa: E402
 
 ok = True
@@ -102,6 +104,17 @@ check(w.get("dan").coins >= 1000, "broadcaster !givecoins works")
 o = econ.handle_chat(chat("rando", "!givecoins @dan 1000"))
 check(o == [], "non-mod admin command ignored")
 
+# blocked viewer: buy and gift are silently ignored, balance untouched
+w.get("mallory").coins = 1000
+w.set_banned("mallory", True)
+o = econ.handle_chat(chat("mallory", "!buy nameship Nope"))
+check(o == [] and w.get("mallory").coins == 1000, "blocked viewer's !buy is ignored, no coins spent")
+o = econ.handle_chat(chat("mallory", "!gift @alice 100"))
+check(o == [] and w.get("mallory").coins == 1000, "blocked viewer's !gift is ignored")
+w.set_banned("mallory", False)
+o = econ.handle_chat(chat("mallory", "!buy nameship Yes"))
+check(o and o[0]["t"] == "cmd", "unblocked viewer can buy again")
+
 # command aliases resolve to one canonical command
 check(econ._canon.get("!bal") == "balance" and econ._canon.get("!coins") == "balance",
       "!bal / !coins alias !balance")
@@ -112,6 +125,60 @@ check(o and o[0]["t"] == "say" and "balance" in o[0]["msg"], "!bal works end-to-
 w.get("alice").coins = 500   # top up so the purchase is affordable
 o = econ.handle_chat(chat("alice", "!purchase nameship Foo"))
 check(o and o[0]["t"] == "cmd" and o[0]["id"] == "name_ship", "!purchase works like !buy")
+
+# testing mode: cooldowns disabled -> a cooldown event is re-buyable immediately.
+# Fresh settings: the shared `s` had its bad-karma cap tightened above, which would
+# otherwise block the 2nd bad buy for a different reason than the cooldown.
+rt = Runtime(cooldowns_enabled=False)
+s2 = EconomySettings(min_purchase_price=10)
+w2 = Wallet(tempfile.mktemp(suffix=".json"), s2, clock=lambda: 0)
+econ2 = Economy(w2, cat, clock=clk, runtime=rt)
+w2.get("zoe").coins = 10000
+a = econ2.handle_chat(chat("zoe", "!buy pirate"))
+b = econ2.handle_chat(chat("zoe", "!buy pirate"))   # no clock advance, cooldown is 60s
+check(a[0]["t"] == "cmd" and b[0]["t"] == "cmd", "cooldowns disabled: cooldown event re-buys immediately")
+rt.cooldowns_enabled = True
+o = econ2.handle_chat(chat("zoe", "!buy pirate"))
+check("cooldown" in o[0]["msg"], "re-enabling cooldowns blocks the next re-buy")
+
+# testing mode: caps disabled -> per-window caps (event + karma) stop blocking.
+# cooldowns also off here so the discriminator is the CAP, not the cooldown.
+rt2 = Runtime(cooldowns_enabled=False, caps_enabled=False)
+s3 = EconomySettings(min_purchase_price=10)
+w3 = Wallet(tempfile.mktemp(suffix=".json"), s3, clock=lambda: 0)
+econ3 = Economy(w3, cat, clock=clk, runtime=rt2)   # pirate: bad, event_cap=2
+w3.get("kai").coins = 10000
+outs = [econ3.handle_chat(chat("kai", "!buy pirate")) for _ in range(4)]
+check(all(o[0]["t"] == "cmd" for o in outs), "caps disabled: repeated bad buys never hit a window cap")
+rt2.caps_enabled = True   # re-enable -> event_cap (2) now blocks
+o = econ3.handle_chat(chat("kai", "!buy pirate"))
+check("maxed this window" in o[0]["msg"] or "too many" in o[0]["msg"],
+      "re-enabling caps blocks the over-cap buy again")
+
+# --- "buy any ship" (ship_picker) -----------------------------------------
+ship_ev = StoreEvent(id="gift_ship", buy_key="ship", nicknames=["ships"],
+                     ship_picker=True, karma="good", tier=1, enabled=True)
+w4 = Wallet(tempfile.mktemp(suffix=".json"), EconomySettings(min_purchase_price=10), clock=lambda: 0)
+econ4 = Economy(w4, [ship_ev], clock=clk)
+w4.get("rich").coins = 500000
+
+o = econ4.handle_chat(chat("rich", "!buy ship katana"))
+kc = ships.SHIPS["katana"].coins
+check(o[0]["t"] == "cmd" and o[0]["id"] == "gift_ship", "buy ship -> cmd gift_ship")
+check(o[0]["args"] == {"macro": ships.SHIPS["katana"].macro}, "cmd carries ONLY the macro arg")
+check(w4.get("rich").coins == 500000 - kc, f"charged the ship's scaled price ({kc})")
+
+o = econ4.handle_chat(chat("rich", "!buy ship"))          # no name -> the list
+check(o[0]["t"] == "say" and "!buy ship" in o[0]["msg"], "'!buy ship' lists ships")
+o = econ4.handle_chat(chat("rich", "!buy ship zzzznope"))  # miss
+check("no ship" in o[0]["msg"].lower(), "unknown ship is reported")
+o = econ4.handle_chat(chat("rich", "!buy ship ra"))        # ambiguous -> suggest
+check("did you mean" in o[0]["msg"].lower(), "ambiguous ship name -> suggestions")
+
+w4.get("poor").coins = 10
+o = econ4.handle_chat(chat("poor", "!buy ship katana"))
+check("not enough" in o[0]["msg"], "too-poor viewer refused a ship (no cmd)")
+check(all(x["t"] != "cmd" for x in o), "no ship spawned when unaffordable")
 
 print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
 sys.exit(0 if ok else 1)

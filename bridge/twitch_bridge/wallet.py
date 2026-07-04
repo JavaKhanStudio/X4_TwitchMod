@@ -139,6 +139,25 @@ class Wallet:
         v.karma = max(self.s.karma_floor, min(self.s.karma_cap, karma))
         return v.karma
 
+    # -- moderation ----------------------------------------------------------
+    def set_banned(self, username: str, banned: bool) -> Viewer:
+        """Block/unblock a viewer: banned viewers stop earning (award loop) and
+        are refused by the purchase engine. Returns the viewer."""
+        v = self.get(username)
+        v.banned = banned
+        return v
+
+    def viewer_list(self) -> list[dict]:
+        """Snapshot of every known viewer for the dashboard admin panel,
+        richest first. Read-only projection — never hand out live Viewers."""
+        rows = [
+            {"username": v.username, "coins": v.coins, "karma": v.karma,
+             "banned": v.banned, "sub": v.sub, "vip": v.vip, "mod": v.mod}
+            for v in self.viewers.values()
+        ]
+        rows.sort(key=lambda r: (r["banned"], -r["coins"], r["username"]))
+        return rows
+
     # -- the award loop (doc 08 §2.1) ---------------------------------------
     def _activity_mult(self, v: Viewer) -> float:
         if not self.s.chat_reqs_for_coins:

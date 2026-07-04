@@ -11,8 +11,10 @@ import time
 from collections import deque
 
 from . import protocol
+from . import ships as shipreg
 from .catalog import CATALOG, StoreEvent
 from .commands import ROLE_RANK, role_of
+from .runtime import Runtime
 from .wallet import EconomySettings, Wallet
 
 KARMA_CAP_FIELD = {
@@ -38,10 +40,11 @@ COMMAND_ALIASES = {
 
 class Economy:
     def __init__(self, wallet: Wallet, catalog: list[StoreEvent] | None = None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, runtime: Runtime | None = None):
         self.w = wallet
         self.s: EconomySettings = wallet.s
         self.clock = clock
+        self.rt = runtime if runtime is not None else Runtime()
         # !buy lookup: buy_key + nicknames -> event. Info actions are excluded —
         # they answer via COMMAND_ALIASES below, they are not purchases.
         self.by_key = {}
@@ -89,11 +92,16 @@ class Economy:
 
     # -- the purchase pipeline (doc 08 §4.1) --------------------------------
     def _buy(self, user: str, role: str, tok: list[str]) -> list[dict]:
+        if self.w.get(user).banned:
+            return []   # blocked viewers are silently ignored (no engagement)
         if len(tok) < 2:
             return [protocol.say(f"@{user} usage: !buy <key> [args]")]
         ev = self.by_key.get(tok[1].lower())
         if ev is None or not ev.enabled:
             return [protocol.say(f"@{user} '{tok[1]}' is not available.")]
+
+        if ev.ship_picker:                       # "!buy ship <name>" — priced per ship
+            return self._buy_ship(user, role, ev, tok[2:])
 
         argvals = tok[2:]
         cost, err = self._cost(ev, argvals)
@@ -114,11 +122,51 @@ class Economy:
         self.w.apply_purchase_karma(user, ev.karma, cost)
         self._record(ev)
         args = {name: argvals[i] for i, name in enumerate(ev.args) if i < len(argvals)}
+        bal = self.w.get(user)   # post-deduction balance
         return [
             protocol.command(ev.id, user, args, tier=ev.tier),
-            protocol.say(f"@{user} bought {ev.label or ev.buy_key} for {cost} "
-                         f"(karma {self.w.get(user).karma}%)"),
+            protocol.say(f"@{user} bought {ev.label or ev.buy_key} for {cost} — "
+                         f"{bal.coins} coins left (karma {bal.karma}%)"),
         ]
+
+    # -- "buy any ship", priced by the ship's in-game value (ships.py registry) ---
+    def _buy_ship(self, user: str, role: str, ev: StoreEvent, argvals: list[str]) -> list[dict]:
+        query = " ".join(argvals)
+        if not query:                            # "!buy ship" / "!buy ships" -> the list
+            return [protocol.say(self._ship_list_msg(user))]
+        ship, suggestions = shipreg.resolve(query)
+        if ship is None:
+            if suggestions:
+                names = ", ".join(s.key for s in suggestions[:8])
+                return [protocol.say(f"@{user} did you mean: {names}? (!buy ship <name>)")]
+            return [protocol.say(f"@{user} no ship '{query}'. Try !buy ship for the list.")]
+
+        cost = ship.coins
+        if ROLE_RANK[role] < ROLE_RANK[ev.min_role]:
+            return [protocol.say(f"@{user} {ev.label or ev.buy_key} needs {ev.min_role}.")]
+        if self.w.get(user).coins < cost:
+            return [protocol.say(f"@{user} not enough coins: {ship.label} costs {cost}, "
+                                 f"you have {self.w.get(user).coins}.")]
+        capped = self._cap_check(ev)
+        if capped:
+            return [protocol.say(f"@{user} {capped}")]
+
+        # commit — send ONLY the macro as the arg (the lua ';'-joins arg values; a
+        # single value keeps event.param3 == the macro string for macro.{$macro}).
+        self.w.take_coins(user, cost)
+        self.w.apply_purchase_karma(user, ev.karma, cost)
+        self._record(ev)
+        bal = self.w.get(user)
+        return [
+            protocol.command(ev.id, user, {"macro": ship.macro}, tier=ev.tier),
+            protocol.say(f"@{user} bought a {ship.label} ({ship.size} {ship.role}) for {cost} — "
+                         f"{bal.coins} coins left (karma {bal.karma}%)"),
+        ]
+
+    def _ship_list_msg(self, user: str) -> str:
+        smp = ", ".join(f"{s.key} {s.coins}c" for s in shipreg.sample(6))
+        return (f"@{user} buy any of {len(shipreg.SHIPS)} ships with !buy ship <name>. "
+                f"e.g. {smp}")
 
     def _cost(self, ev: StoreEvent, argvals: list[str]):
         if ev.variable:
@@ -138,20 +186,20 @@ class Economy:
 
     def _cap_check(self, ev: StoreEvent) -> str | None:
         self._prune()
-        # per-event re-buy cooldown
-        if ev.cooldown:
+        # per-event re-buy cooldown (skipped in testing mode; caps still apply)
+        if ev.cooldown and self.rt.cooldowns_enabled:
             last = max((t for t, eid, _ in self._purchases if eid == ev.id), default=None)
             if last is not None and self.clock() - last < ev.cooldown:
                 wait = int(ev.cooldown - (self.clock() - last))
                 return f"{ev.label or ev.buy_key} on cooldown, wait {wait}s."
-        # per-event cap within window
-        if ev.event_cap:
+        # per-event cap within window (skipped when caps disabled for testing)
+        if ev.event_cap and self.rt.caps_enabled:
             n = sum(1 for _, eid, _ in self._purchases if eid == ev.id)
             if n >= ev.event_cap:
                 return f"{ev.label or ev.buy_key} maxed this window."
-        # per-karma-type cap within window
+        # per-karma-type cap within window (skipped when caps disabled for testing)
         limit = getattr(self.s, KARMA_CAP_FIELD.get(ev.karma, ""), None)
-        if limit is not None:
+        if limit is not None and self.rt.caps_enabled:
             n = sum(1 for _, _, k in self._purchases if k == ev.karma)
             if n >= limit:
                 return f"too many '{ev.karma}' events right now, try later."
@@ -162,6 +210,8 @@ class Economy:
 
     # -- gifting + admin ----------------------------------------------------
     def _gift(self, user: str, tok: list[str]) -> list[dict]:
+        if self.w.get(user).banned:
+            return []   # blocked viewers can't move coins either
         if len(tok) < 3 or not tok[2].lstrip("-").isdigit():
             return [protocol.say(f"@{user} usage: !gift @user <amount>")]
         target = tok[1].lstrip("@")

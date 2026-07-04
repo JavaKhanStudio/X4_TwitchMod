@@ -86,10 +86,31 @@ PAGE = """<!doctype html>
     padding:1px 8px;font-size:11px;cursor:pointer;vertical-align:middle}
   .copy:hover{background:#9146ff33}
   #setup h2{color:var(--tw)}
+  .rbtn{background:var(--card);border:1px solid var(--line);color:var(--dim);border-radius:999px;
+    padding:6px 13px;font-weight:600;font-size:13px;cursor:pointer}
+  .rbtn:hover:not(:disabled){color:var(--txt);border-color:var(--tw)}
+  .rbtn:disabled{opacity:.55;cursor:default}
+  .form button.alt{background:#2a2d47}
+  .form button.danger{background:var(--bad)}
+  .vtab{width:100%;border-collapse:collapse;font-size:13px}
+  .vtab th{text-align:left;color:var(--dim);font-weight:700;font-size:11px;text-transform:uppercase;
+    letter-spacing:.06em;padding:6px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)}
+  .vtab td{padding:6px 8px;border-bottom:1px solid var(--line)}
+  .vtab tr:last-child td{border-bottom:0}
+  .vtab .num{font-variant-numeric:tabular-nums;text-align:right}
+  .vtab .banned{color:var(--bad);font-weight:700}
+  .vtab .pick{cursor:pointer;color:var(--cmd)}
+  .vtab .pick:hover{text-decoration:underline}
+  .vwrap{overflow:auto;max-height:260px;margin-top:8px}
+  .chk{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;
+    margin:12px 0 2px;user-select:none;font-weight:600}
+  .chk input{width:16px;height:16px;accent-color:var(--tw);cursor:pointer}
+  .chk .dim{font-weight:400}
   @media(max-width:680px){.grid{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
   <header>
     <h1>🎮 X4 ⇄ Twitch Companion</h1><div class="sp"></div>
+    <button id="restart" class="rbtn" title="Restart the companion process (reloads the page when it's back)">⟳ Restart</button>
     <div class="pill"><span id="big" class="dot"></span><span id="bigt">connecting…</span></div>
   </header>
   <div class="card" id="setup" style="margin-bottom:14px;display:none">
@@ -154,6 +175,27 @@ PAGE = """<!doctype html>
         <div class="stat"><b id="eawarded">0</b><span>coins awarded</span></div>
       </div>
     </div>
+    <div class="card" id="admincard" style="grid-column:1/-1;display:none"><h2>Moderation</h2>
+      <div class="form">
+        <label class="field"><span>Viewer</span>
+          <input id="advuser" placeholder="twitch login (or click one below)" autocomplete="off"></label>
+        <label class="field" style="flex:0 0 120px;min-width:100px"><span>Coins</span>
+          <input id="advamt" type="number" value="1000" step="100" autocomplete="off"></label>
+        <button id="adgive">Give</button>
+        <button id="adgiveall" class="alt">Give all</button>
+        <button id="adban" class="danger">Block</button>
+        <button id="adunban" class="alt">Unblock</button>
+      </div>
+      <p id="adstate" class="dim" role="status" aria-live="polite" style="margin:8px 0 0">give coins to a viewer, or block/unblock them.</p>
+      <div><label class="chk"><input type="checkbox" id="cdtoggle"> Disable cooldowns
+        <span class="dim">— testing: fire actions with no wait</span></label></div>
+      <div><label class="chk"><input type="checkbox" id="capstoggle"> Disable purchase limits
+        <span class="dim">— testing: no per-window caps (“too many … try later”)</span></label></div>
+      <div class="vwrap"><table class="vtab">
+        <thead><tr><th>Viewer</th><th class="num">Coins</th><th class="num">Karma</th><th>Status</th></tr></thead>
+        <tbody id="vbody"><tr><td colspan="4" class="dim">no viewers yet</td></tr></tbody>
+      </table></div>
+    </div>
     <div class="card feed"><h2>Activity</h2><ul id="feed"><li><span class="x" style="color:var(--dim)">waiting for events…</span></li></ul></div>
   </div>
   <footer id="foot">polling…</footer>
@@ -194,7 +236,16 @@ async function tick(){
     txt($('ein'),s.events_in); txt($('cmd'),s.commands_fired); txt($('out'),s.actions_out);
     const e=s.econ||{};
     if(e&&Object.keys(e).length){ disp($('econcard'),true); txt($('ev'),e.viewers??0);
-      txt($('ecoins'),e.coins_in_circulation??0); txt($('eawarded'),e.coins_awarded_total??0); }
+      txt($('ecoins'),e.coins_in_circulation??0); txt($('eawarded'),e.coins_awarded_total??0);
+      const first=$('admincard').style.display==='none'; disp($('admincard'),true);
+      // load the viewer table on first reveal, then refresh it every ~5s so balances track awards
+      if(first||(_vt++%5===0)) loadViewers(); }
+    // reflect the live testing flags (checkbox checked == that limiter disabled)
+    const fl=s.flags||{};
+    const syncChk=(id,val)=>{ if(val===undefined) return; const want=val===false; const el=$(id);
+      if(el && document.activeElement!==el && el.checked!==want) el.checked=want; };
+    syncChk('cdtoggle', fl.cooldowns_enabled);
+    syncChk('capstoggle', fl.caps_enabled);
     if(s.recent&&s.recent.length){
       html($('feed'),s.recent.map(r=>`<li><span class="t">${fmtT(r.ts)}</span><span class="b ${r.dir}">${r.dir}</span><span class="x">${esc(r.text)}</span></li>`).join('')); }
     html($('foot'),s.last_error?('<span class="err">last error: '+esc(s.last_error)+'</span>'):'connected to companion · refreshing every 1s');
@@ -214,6 +265,62 @@ if(cbtn) cbtn.onclick=async()=>{
   html($('cstate'),'starting… <b>a browser window will open to authorize</b>');
   try{ await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); }
   catch(e){ html($('cstate'),'<span class="err">could not reach companion</span>'); }
+};
+// --- Moderation panel: give coins / block viewers ---
+let _vt=0;
+async function admin(payload){
+  try{ const r=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)}); return await r.json(); }
+  catch(e){ return {ok:false,error:'cannot reach companion'}; }
+}
+async function loadViewers(){
+  let d; try{ d=await (await fetch('/api/viewers',{cache:'no-store'})).json(); }catch(e){ return; }
+  if(!d||!d.viewers) return;
+  const rows=d.viewers.map(v=>'<tr><td class="pick" data-u="'+esc(v.username)+'">'+esc(v.username)+'</td>'
+    +'<td class="num">'+v.coins+'</td><td class="num">'+v.karma+'%</td><td>'
+    +(v.banned?'<span class="banned">blocked</span>':(v.mod?'mod':v.sub?'sub':v.vip?'vip':'—'))+'</td></tr>').join('');
+  html($('vbody'),rows||'<tr><td colspan="4" class="dim">no viewers yet</td></tr>');
+  document.querySelectorAll('#vbody .pick').forEach(td=>td.onclick=()=>{$('advuser').value=td.dataset.u;});
+}
+(function wireAdmin(){
+  const st=m=>html($('adstate'),m);
+  const usr=()=>$('advuser').value.trim().replace(/^@/,'');
+  const amt=()=>parseInt($('advamt').value,10)||0;
+  const need=()=>{ if(usr())return false; st('<span class="err">enter a viewer name first</span>'); return true; };
+  const run=async(p,okmsg)=>{ const r=await admin(p);
+    st(r.ok?okmsg(r):('<span class="err">'+esc(r.error||'failed')+'</span>')); loadViewers(); };
+  const g=id=>$(id); if(!g('adgive')) return;
+  g('adgive').onclick=()=>{ if(need())return; run({action:'give',user:usr(),amount:amt()},
+    r=>'✓ '+esc(r.user)+' now has '+r.coins+' coins'); };
+  g('adgiveall').onclick=()=>run({action:'giveall',amount:amt()},
+    r=>'✓ gave '+r.amount+' coins to '+r.count+' viewers');
+  g('adban').onclick=()=>{ if(need())return; run({action:'ban',user:usr()},
+    r=>'🚫 '+esc(r.user)+' is blocked'); };
+  g('adunban').onclick=()=>{ if(need())return; run({action:'unban',user:usr()},
+    r=>'✓ '+esc(r.user)+' is unblocked'); };
+  // testing checkboxes: checked => that limiter disabled
+  const toggle=(el,action,onmsg,offmsg,key)=>{ if(!el) return;
+    el.onchange=async()=>{ const r=await admin({action,value:!el.checked});
+      if(!r.ok){ st('<span class="err">'+esc(r.error||'failed')+'</span>'); el.checked=!el.checked; }
+      else st(r[key]?onmsg:offmsg); }; };
+  toggle(g('cdtoggle'),'cooldowns','cooldowns re-enabled','⚡ cooldowns disabled — fire away','cooldowns_enabled');
+  toggle(g('capstoggle'),'caps','purchase limits re-enabled','⚡ purchase limits disabled — spam away','caps_enabled');
+})();
+// --- Restart button: bounce the companion, then reload once it's back ---
+const rbtn=$('restart');
+if(rbtn) rbtn.onclick=async()=>{
+  if(!confirm('Restart the companion? Twitch + X4 links briefly drop and reconnect.')) return;
+  rbtn.disabled=true; rbtn.textContent='restarting…';
+  html($('foot'),'restarting companion…');
+  try{ await fetch('/api/restart',{method:'POST'}); }catch(e){}
+  // The old process is shutting down; wait for the fresh one to bind, then reload
+  // (a reload also pulls the new page if the code changed). Poll after a short grace.
+  let tries=0;
+  setTimeout(function poll(){
+    fetch('/api/status',{cache:'no-store'})
+      .then(()=>location.reload())
+      .catch(()=>{ if(++tries>40){ location.reload(); } else { setTimeout(poll,500); } });
+  },1500);
 };
 tick(); setInterval(tick,1000);
 </script></body></html>"""
@@ -237,6 +344,8 @@ class _Handler(BaseHTTPRequestHandler):
     status: Status = None  # type: ignore[assignment]
     on_connect = None       # callable(dict) -> None
     on_disconnect = None    # callable() -> None
+    on_admin = None         # callable(dict) -> dict  (give coins / block viewers)
+    on_restart = None       # callable() -> None      (restart the companion process)
 
     def _send(self, code: int, body: bytes, ctype: str) -> None:
         self.send_response(code)
@@ -257,6 +366,10 @@ class _Handler(BaseHTTPRequestHandler):
                        "application/json")
         elif self.path in ("/", "/index.html"):
             self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+        elif self.path.startswith("/api/viewers"):
+            # The admin panel's viewer table (username, coins, karma, banned).
+            result = self.on_admin({"action": "list"}) if self.on_admin else {"ok": False}
+            self._send(200, json.dumps(result).encode(), "application/json")
         elif self.path.startswith("/catalog"):
             self._send(200, _catalog_page(), "text/html; charset=utf-8")
         else:
@@ -276,6 +389,17 @@ class _Handler(BaseHTTPRequestHandler):
             if self.on_disconnect:
                 self.on_disconnect()    # type: ignore[misc]
             self._send(200, b'{"ok":true}', "application/json")
+        elif self.path.startswith("/api/admin"):
+            # give coins / give-all / block / unblock a viewer
+            result = self.on_admin(body) if self.on_admin else {"ok": False, "error": "economy is off"}
+            self._send(200, json.dumps(result).encode(), "application/json")
+        elif self.path.startswith("/api/restart"):
+            # Ack FIRST, then trigger the restart — on_restart only schedules the
+            # shutdown on the loop, so this response still goes out cleanly.
+            ok = self.on_restart is not None
+            self._send(200, json.dumps({"ok": ok}).encode(), "application/json")
+            if ok:
+                self.on_restart()   # type: ignore[misc]
         else:
             self._send(404, b"not found", "text/plain")
 
@@ -285,12 +409,14 @@ class _Handler(BaseHTTPRequestHandler):
 
 class Dashboard:
     def __init__(self, status: Status, port: int = 17564, host: str = "127.0.0.1",
-                 on_connect=None, on_disconnect=None) -> None:
+                 on_connect=None, on_disconnect=None, on_admin=None, on_restart=None) -> None:
         self.status = status
         self.host = host
         self.port = port
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
+        self.on_admin = on_admin
+        self.on_restart = on_restart
         self._srv: ThreadingHTTPServer | None = None
 
     @property
@@ -302,6 +428,8 @@ class Dashboard:
             "status": self.status,
             "on_connect": staticmethod(self.on_connect) if self.on_connect else None,
             "on_disconnect": staticmethod(self.on_disconnect) if self.on_disconnect else None,
+            "on_admin": staticmethod(self.on_admin) if self.on_admin else None,
+            "on_restart": staticmethod(self.on_restart) if self.on_restart else None,
         })
         try:
             self._srv = ThreadingHTTPServer((self.host, self.port), handler)
@@ -316,4 +444,5 @@ class Dashboard:
     def stop(self) -> None:
         if self._srv is not None:
             self._srv.shutdown()
+            self._srv.server_close()   # release the port so a restart can rebind it
             self._srv = None

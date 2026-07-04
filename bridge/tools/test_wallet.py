@@ -38,6 +38,25 @@ check(not w.take_coins("alice", 999), "take_coins refuses when too poor")
 w.give_coins("alice", -10**9)   # large negative from any balance -> clamp at 0
 check(v.coins == 0, "give_coins never goes below 0")
 
+# moderation: block/unblock + viewer_list projection
+w.set_banned("alice", True)
+check(w.get("alice").banned is True, "set_banned blocks a viewer")
+w.get("alice").coins = 500
+w.get("carl").coins = 900
+before_carl = w.reward_for(w.note_activity("carl"))
+w.award()
+check(w.get("alice").coins == 500, "banned viewer earns nothing in award()")
+check(before_carl > 0, "non-banned active viewer still earns")
+w.set_banned("alice", False)
+check(w.get("alice").banned is False, "set_banned unblocks a viewer")
+rows = w.viewer_list()
+check(all({"username", "coins", "karma", "banned"} <= set(r) for r in rows),
+      "viewer_list rows carry username/coins/karma/banned")
+check(any(r["username"] == "carl" for r in rows), "viewer_list includes known viewers")
+w.set_banned("carl", True)
+check(w.viewer_list()[-1]["username"] == "carl", "viewer_list sorts banned viewers last")
+w.set_banned("carl", False)
+
 # award loop: active viewer at 100 karma gets base coin_amount
 w2 = Wallet(tempfile.mktemp(suffix=".json"), s, clock=clk)
 a = w2.note_activity("bob")            # last_seen = now

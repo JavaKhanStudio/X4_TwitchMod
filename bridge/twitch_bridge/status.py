@@ -53,6 +53,7 @@ class Status:
         self.last_error: str | None = None
         self.econ: dict = {}        # wallet stats (viewers, coins) — doc 08
         self.twitch: dict = {}      # twitch connection state (connected/login/error)
+        self.flags: dict = {}       # live testing switches (e.g. cooldowns_enabled)
         self._recent: collections.deque[dict] = collections.deque(maxlen=50)
 
     # -- writers (called from the asyncio loop) ------------------------------
@@ -90,9 +91,18 @@ class Status:
             self.last_error = text
             self._push("err", text)
 
+    def note(self, text: str) -> None:
+        """Push a plain system line to the activity feed (e.g. admin actions)."""
+        with self._lock:
+            self._push("sys", text)
+
     def set_econ(self, stats: dict) -> None:
         with self._lock:
             self.econ = dict(stats)
+
+    def set_flags(self, flags: dict) -> None:
+        with self._lock:
+            self.flags = dict(flags)
 
     def set_twitch(self, state: dict) -> None:
         with self._lock:
@@ -118,6 +128,7 @@ class Status:
                 "last_error": self.last_error,
                 "econ": self.econ,
                 "twitch": self.twitch,
+                "flags": self.flags,
                 "uptime_s": int(time.time() - self._started),
                 "recent": list(self._recent),
             }

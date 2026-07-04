@@ -15,6 +15,7 @@ from .commands import CommandEngine
 from .config import Config
 from .dashboard import Dashboard
 from .economy import Economy
+from .runtime import Runtime
 from .sources import make_source
 from .wallet import Wallet
 from .x4link import BaseX4Link, make_x4_link
@@ -61,8 +62,11 @@ async def main(config: Config) -> None:
         config.channel = config.channel or saved.get("channel", "")
 
     source = make_source(config)
-    engine = CommandEngine(STARTER)
+    runtime = Runtime()   # live testing switches, toggled from the dashboard
+    engine = CommandEngine(STARTER, runtime=runtime)
     status = Status(source=source.name, channel=config.channel, socket_path=config.socket_path)
+    status.set_flags({"cooldowns_enabled": runtime.cooldowns_enabled,
+                      "caps_enabled": runtime.caps_enabled})
 
     # If this is the twitch source, mirror its connection state into the dashboard.
     if hasattr(source, "set_status_cb"):
@@ -70,6 +74,16 @@ async def main(config: Config) -> None:
         status.set_twitch(source.state())
 
     loop = asyncio.get_running_loop()
+
+    # Restart plumbing: the dashboard's Restart button sets stop_event (from its
+    # daemon thread, via the loop) so the main loop below unblocks and runs its
+    # normal shutdown — freeing the port + X4 pipe — before __main__ re-execs.
+    stop_event = asyncio.Event()
+    restart_state = {"restart": False}
+
+    def request_restart() -> None:
+        restart_state["restart"] = True
+        loop.call_soon_threadsafe(stop_event.set)
 
     def on_connect(body: dict) -> None:
         """Called from the dashboard thread when the user clicks Connect.
@@ -92,8 +106,60 @@ async def main(config: Config) -> None:
     wallet = econ = None
     if config.economy:
         wallet = Wallet(config.wallet_path)
-        econ = Economy(wallet)
+        econ = Economy(wallet, runtime=runtime)
         status.set_econ(wallet.stats())
+
+    def on_admin(body: dict) -> dict:
+        """Dashboard actions (give coins / block viewers / testing toggles). Runs on
+        the event loop so wallet + runtime changes never race the loop's own reads.
+        Called from the dashboard's daemon thread."""
+
+        async def run() -> dict:
+            action = (body.get("action") or "").strip()
+            target = (body.get("user") or "").strip().lstrip("@").lower()
+            # runtime testing toggles work with or without the economy
+            if action in ("cooldowns", "caps"):
+                field = "cooldowns_enabled" if action == "cooldowns" else "caps_enabled"
+                setattr(runtime, field, bool(body.get("value")))
+                status.set_flags({"cooldowns_enabled": runtime.cooldowns_enabled,
+                                  "caps_enabled": runtime.caps_enabled})
+                label = "cooldowns" if action == "cooldowns" else "purchase limits"
+                status.note(f"testing: {label} {'ON' if getattr(runtime, field) else 'OFF'}")
+                return {"ok": True, field: getattr(runtime, field)}
+            if wallet is None:
+                return {"ok": False, "error": "economy is off"}
+            if action == "list":
+                return {"ok": True, "viewers": wallet.viewer_list()}
+            if action == "giveall":
+                amount = int(body.get("amount") or 0)
+                for v in list(wallet.viewers.values()):
+                    wallet.give_coins(v.username, amount)
+                wallet.save()
+                status.set_econ(wallet.stats())
+                status.note(f"admin: gave {amount} coins to all {len(wallet.viewers)} viewers")
+                return {"ok": True, "count": len(wallet.viewers), "amount": amount}
+            if not target:
+                return {"ok": False, "error": "a viewer name is required"}
+            if action == "give":
+                amount = int(body.get("amount") or 0)
+                coins = wallet.give_coins(target, amount)
+                wallet.save()
+                status.set_econ(wallet.stats())
+                status.note(f"admin: gave {amount} coins to {target} (now {coins})")
+                return {"ok": True, "user": target, "coins": coins}
+            if action in ("ban", "unban"):
+                v = wallet.set_banned(target, action == "ban")
+                wallet.save()
+                status.note(f"admin: {'blocked' if v.banned else 'unblocked'} {target}")
+                return {"ok": True, "user": target, "banned": v.banned}
+            return {"ok": False, "error": f"unknown action '{action}'"}
+
+        try:
+            return asyncio.run_coroutine_threadsafe(run(), loop).result(timeout=5)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "invalid amount"}
+        except Exception as e:  # noqa: BLE001 — never let the dashboard thread crash
+            return {"ok": False, "error": str(e)}
 
     # X4 -> bridge actions also flow through the status feed before the source handles them.
     async def on_x4_message(msg: dict) -> None:
@@ -106,7 +172,8 @@ async def main(config: Config) -> None:
     dash = None
     if config.dashboard:
         dash = Dashboard(status, port=config.dashboard_port,
-                         on_connect=on_connect, on_disconnect=on_disconnect).start()
+                         on_connect=on_connect, on_disconnect=on_disconnect,
+                         on_admin=on_admin, on_restart=request_restart).start()
         log.info("companion dashboard → %s  (open this in your browser)", dash.url)
         if config.open_browser:
             try:
@@ -164,8 +231,8 @@ async def main(config: Config) -> None:
         if config.dashboard:
             # A manually-started companion must NOT die when its source ends — the
             # user is watching the dashboard. Stay alive (X4 link keeps retrying)
-            # until interrupted (Ctrl-C). The dashboard reflects the source state.
-            await asyncio.Event().wait()
+            # until interrupted (Ctrl-C) or the Restart button fires stop_event.
+            await stop_event.wait()
         else:
             # Headless / tests: exit when the source is exhausted.
             await consume_task
@@ -186,3 +253,7 @@ async def main(config: Config) -> None:
             await asyncio.wait_for(link_task, timeout=2.0)
         except asyncio.TimeoutError:
             link_task.cancel()
+
+    # True -> the Restart button was pressed; __main__ re-execs a fresh process
+    # now that the port + X4 pipe are released.
+    return restart_state["restart"]

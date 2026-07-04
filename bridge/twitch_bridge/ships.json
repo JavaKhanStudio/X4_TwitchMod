@@ -1,0 +1,514 @@
+[
+ {
+  "key": "kyd",
+  "label": "Kyd",
+  "macro": "ship_pir_s_fighter_01_a_macro",
+  "credits": 53080,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "elite",
+  "label": "Elite",
+  "macro": "ship_arg_s_fighter_02_a_macro",
+  "credits": 76755,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "nodan",
+  "label": "Nodan",
+  "macro": "ship_gen_s_fighter_01_a_macro",
+  "credits": 77630,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "pegasus",
+  "label": "Pegasus",
+  "macro": "ship_par_s_scout_01_a_macro",
+  "credits": 80050,
+  "size": "S",
+  "role": "scout"
+ },
+ {
+  "key": "discoverer",
+  "label": "Discoverer",
+  "macro": "ship_arg_s_scout_01_a_macro",
+  "credits": 87605,
+  "size": "S",
+  "role": "scout"
+ },
+ {
+  "key": "kestrel",
+  "label": "Kestrel",
+  "macro": "ship_tel_s_scout_01_a_macro",
+  "credits": 91945,
+  "size": "S",
+  "role": "scout"
+ },
+ {
+  "key": "quasar",
+  "label": "Quasar",
+  "macro": "ship_arg_s_fighter_04_a_macro",
+  "credits": 100545,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "piranha",
+  "label": "Piranha",
+  "macro": "ship_bor_s_scout_01_a_macro",
+  "credits": 102657,
+  "size": "S",
+  "role": "scout"
+ },
+ {
+  "key": "pulsar",
+  "label": "Pulsar",
+  "macro": "ship_arg_s_fighter_03_a_macro",
+  "credits": 113565,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "irukandji",
+  "label": "Irukandji",
+  "macro": "ship_bor_s_scout_02_a_macro",
+  "credits": 119702,
+  "size": "S",
+  "role": "scout"
+ },
+ {
+  "key": "asp",
+  "label": "Asp",
+  "macro": "ship_spl_s_fighter_02_b_macro",
+  "credits": 123940,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "nova",
+  "label": "Nova",
+  "macro": "ship_arg_s_fighter_01_a_macro",
+  "credits": 131970,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "mako",
+  "label": "Mako",
+  "macro": "ship_bor_s_fighter_01_a_macro",
+  "credits": 133165,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "guillemot",
+  "label": "Guillemot",
+  "macro": "ship_tel_s_scout_02_a_macro",
+  "credits": 139525,
+  "size": "S",
+  "role": "scout"
+ },
+ {
+  "key": "jaguar",
+  "label": "Jaguar",
+  "macro": "ship_spl_s_scout_01_a_macro",
+  "credits": 146365,
+  "size": "S",
+  "role": "scout"
+ },
+ {
+  "key": "perseus",
+  "label": "Perseus",
+  "macro": "ship_par_s_fighter_01_a_macro",
+  "credits": 156805,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "falcon",
+  "label": "Falcon",
+  "macro": "ship_tel_s_fighter_01_a_macro",
+  "credits": 164360,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "eclipse",
+  "label": "Eclipse",
+  "macro": "ship_arg_s_heavyfighter_02_a_macro",
+  "credits": 169745,
+  "size": "S",
+  "role": "heavy fighter"
+ },
+ {
+  "key": "lux",
+  "label": "Lux",
+  "macro": "ship_pir_s_fighter_02_a_macro",
+  "credits": 175140,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "theseus",
+  "label": "Theseus",
+  "macro": "ship_par_s_fighter_02_a_macro",
+  "credits": 177380,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "mamba",
+  "label": "Mamba",
+  "macro": "ship_spl_s_fighter_01_a_macro",
+  "credits": 194430,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "rapier",
+  "label": "Rapier",
+  "macro": "ship_ter_s_scout_01_a_macro",
+  "credits": 213800,
+  "size": "S",
+  "role": "scout"
+ },
+ {
+  "key": "ares",
+  "label": "Ares",
+  "macro": "ship_par_s_heavyfighter_01_a_macro",
+  "credits": 243540,
+  "size": "S",
+  "role": "heavy fighter"
+ },
+ {
+  "key": "yasur",
+  "label": "Yasur",
+  "macro": "ship_ven_s_fighter_01_a_macro",
+  "credits": 255275,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "moreya",
+  "label": "Moreya",
+  "macro": "ship_yak_s_fighter_01_a_macro",
+  "credits": 269180,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "shih",
+  "label": "Shih",
+  "macro": "ship_pir_s_heavyfighter_01_a_macro",
+  "credits": 274485,
+  "size": "S",
+  "role": "heavy fighter"
+ },
+ {
+  "key": "kukri",
+  "label": "Kukri",
+  "macro": "ship_ter_s_fighter_01_a_macro",
+  "credits": 327573,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "kalis",
+  "label": "Kalis",
+  "macro": "ship_ter_s_fighter_02_a_macro",
+  "credits": 342750,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "nimcha",
+  "label": "Nimcha",
+  "macro": "ship_ter_s_scout_02_a_macro",
+  "credits": 342750,
+  "size": "S",
+  "role": "scout"
+ },
+ {
+  "key": "takoba",
+  "label": "Takoba",
+  "macro": "ship_ter_s_fighter_03_a_macro",
+  "credits": 343160,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "cutlass",
+  "label": "Cutlass",
+  "macro": "ship_ter_s_fighter_04_a_macro",
+  "credits": 343801,
+  "size": "S",
+  "role": "fighter"
+ },
+ {
+  "key": "chimera",
+  "label": "Chimera",
+  "macro": "ship_spl_s_heavyfighter_01_a_macro",
+  "credits": 350477,
+  "size": "S",
+  "role": "heavy fighter"
+ },
+ {
+  "key": "balaur",
+  "label": "Balaur",
+  "macro": "ship_spl_s_heavyfighter_02_a_macro",
+  "credits": 352755,
+  "size": "S",
+  "role": "heavy fighter"
+ },
+ {
+  "key": "barracuda",
+  "label": "Barracuda",
+  "macro": "ship_bor_s_heavyfighter_01_a_macro",
+  "credits": 356250,
+  "size": "S",
+  "role": "heavy fighter"
+ },
+ {
+  "key": "gladius",
+  "label": "Gladius",
+  "macro": "ship_ter_s_heavyfighter_01_a_macro",
+  "credits": 470800,
+  "size": "S",
+  "role": "heavy fighter"
+ },
+ {
+  "key": "nemesis",
+  "label": "Nemesis",
+  "macro": "ship_par_m_corvette_01_a_macro",
+  "credits": 622295,
+  "size": "M",
+  "role": "corvette"
+ },
+ {
+  "key": "dragon",
+  "label": "Dragon",
+  "macro": "ship_spl_m_corvette_01_b_macro",
+  "credits": 739265,
+  "size": "M",
+  "role": "corvette"
+ },
+ {
+  "key": "cypher",
+  "label": "Cypher",
+  "macro": "ship_gen_m_corvette_02_macro",
+  "credits": 914640,
+  "size": "M",
+  "role": "corvette"
+ },
+ {
+  "key": "cerberus",
+  "label": "Cerberus",
+  "macro": "ship_arg_m_frigate_01_a_macro",
+  "credits": 963665,
+  "size": "M",
+  "role": "frigate"
+ },
+ {
+  "key": "kuraokami",
+  "label": "Kuraokami",
+  "macro": "ship_yak_m_corvette_01_a_macro",
+  "credits": 984025,
+  "size": "M",
+  "role": "corvette"
+ },
+ {
+  "key": "osprey",
+  "label": "Osprey",
+  "macro": "ship_tel_m_frigate_01_a_macro",
+  "credits": 1044205,
+  "size": "M",
+  "role": "frigate"
+ },
+ {
+  "key": "gorgon",
+  "label": "Gorgon",
+  "macro": "ship_par_m_frigate_01_a_macro",
+  "credits": 1098300,
+  "size": "M",
+  "role": "frigate"
+ },
+ {
+  "key": "thresher",
+  "label": "Thresher",
+  "macro": "ship_bor_m_gunboat_01_a_macro",
+  "credits": 1252370,
+  "size": "M",
+  "role": "gunboat"
+ },
+ {
+  "key": "envoy",
+  "label": "Envoy",
+  "macro": "ship_gen_m_corvette_01_macro",
+  "credits": 1275085,
+  "size": "M",
+  "role": "corvette"
+ },
+ {
+  "key": "hydra",
+  "label": "Hydra",
+  "macro": "ship_bor_m_corvette_01_a_macro",
+  "credits": 1468656,
+  "size": "M",
+  "role": "corvette"
+ },
+ {
+  "key": "katana",
+  "label": "Katana",
+  "macro": "ship_ter_m_corvette_01_a_macro",
+  "credits": 1763540,
+  "size": "M",
+  "role": "corvette"
+ },
+ {
+  "key": "jian",
+  "label": "Jian",
+  "macro": "ship_ter_m_gunboat_01_a_macro",
+  "credits": 2057600,
+  "size": "M",
+  "role": "gunboat"
+ },
+ {
+  "key": "odachi",
+  "label": "Odachi",
+  "macro": "ship_ter_m_corvette_02_a_macro",
+  "credits": 2116165,
+  "size": "M",
+  "role": "corvette"
+ },
+ {
+  "key": "cobra",
+  "label": "Cobra",
+  "macro": "ship_spl_m_frigate_01_a_macro",
+  "credits": 2172540,
+  "size": "M",
+  "role": "frigate"
+ },
+ {
+  "key": "falx",
+  "label": "Falx",
+  "macro": "ship_ter_m_frigate_01_a_macro",
+  "credits": 2813860,
+  "size": "M",
+  "role": "frigate"
+ },
+ {
+  "key": "behemoth",
+  "label": "Behemoth",
+  "macro": "ship_arg_l_destroyer_01_a_macro",
+  "credits": 4713125,
+  "size": "L",
+  "role": "destroyer"
+ },
+ {
+  "key": "odysseus",
+  "label": "Odysseus",
+  "macro": "ship_par_l_destroyer_01_a_macro",
+  "credits": 5030940,
+  "size": "L",
+  "role": "destroyer"
+ },
+ {
+  "key": "phoenix",
+  "label": "Phoenix",
+  "macro": "ship_tel_l_destroyer_01_a_macro",
+  "credits": 5273360,
+  "size": "L",
+  "role": "destroyer"
+ },
+ {
+  "key": "guppy",
+  "label": "Guppy",
+  "macro": "ship_bor_l_carrier_01_a_macro",
+  "credits": 6513220,
+  "size": "L",
+  "role": "carrier"
+ },
+ {
+  "key": "osaka",
+  "label": "Osaka",
+  "macro": "ship_ter_l_destroyer_01_a_macro",
+  "credits": 8233870,
+  "size": "L",
+  "role": "destroyer"
+ },
+ {
+  "key": "ray",
+  "label": "Ray",
+  "macro": "ship_bor_l_destroyer_01_a_macro",
+  "credits": 8249396,
+  "size": "L",
+  "role": "destroyer"
+ },
+ {
+  "key": "colossus",
+  "label": "Colossus",
+  "macro": "ship_arg_xl_carrier_01_a_macro",
+  "credits": 10090050,
+  "size": "XL",
+  "role": "carrier"
+ },
+ {
+  "key": "condor",
+  "label": "Condor",
+  "macro": "ship_tel_xl_carrier_01_a_macro",
+  "credits": 11170550,
+  "size": "XL",
+  "role": "carrier"
+ },
+ {
+  "key": "zeus",
+  "label": "Zeus",
+  "macro": "ship_par_xl_carrier_01_a_macro",
+  "credits": 13127715,
+  "size": "XL",
+  "role": "carrier"
+ },
+ {
+  "key": "erlking",
+  "label": "Erlking",
+  "macro": "ship_pir_xl_battleship_01_a_macro",
+  "credits": 14920415,
+  "size": "XL",
+  "role": "battleship"
+ },
+ {
+  "key": "rattlesnake",
+  "label": "Rattlesnake",
+  "macro": "ship_spl_l_destroyer_01_a_macro",
+  "credits": 15290790,
+  "size": "L",
+  "role": "destroyer"
+ },
+ {
+  "key": "tokyo",
+  "label": "Tokyo",
+  "macro": "ship_ter_xl_carrier_01_a_macro",
+  "credits": 21886875,
+  "size": "XL",
+  "role": "carrier"
+ },
+ {
+  "key": "shark",
+  "label": "Shark",
+  "macro": "ship_bor_xl_carrier_01_a_macro",
+  "credits": 24464165,
+  "size": "XL",
+  "role": "carrier"
+ },
+ {
+  "key": "raptor",
+  "label": "Raptor",
+  "macro": "ship_spl_xl_carrier_01_a_macro",
+  "credits": 32605075,
+  "size": "XL",
+  "role": "carrier"
+ }
+]

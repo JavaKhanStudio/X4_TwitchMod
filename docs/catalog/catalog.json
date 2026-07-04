@@ -10,7 +10,7 @@
   "tier_name": "Debug",
   "karma": "neutral",
   "syntax": "!buy test",
-  "cost": 0,
+  "cost": 1000,
   "cost_per_unit": null,
   "unit": null,
   "cooldown": 0.0,
@@ -128,6 +128,28 @@
   "enabled": true
  },
  {
+  "buy_key": "enemy",
+  "nicknames": [
+   "raiders",
+   "attack"
+  ],
+  "kind": "effect",
+  "label": "Spawn Raiders",
+  "description": "Summon a squad of hostile Twitch Raiders (the twitchfoe faction) that hunt the player.",
+  "category": "Combat",
+  "tier": 1,
+  "tier_name": "Minor Distraction",
+  "karma": "bad",
+  "syntax": "!buy enemy",
+  "cost": 200,
+  "cost_per_unit": null,
+  "unit": null,
+  "cooldown": 45,
+  "event_cap": 5,
+  "status": "live",
+  "enabled": true
+ },
+ {
   "buy_key": "pirate",
   "nicknames": [],
   "kind": "effect",
@@ -166,6 +188,28 @@
   "enabled": true
  },
  {
+  "buy_key": "ship",
+  "nicknames": [
+   "ships",
+   "buyship"
+  ],
+  "kind": "effect",
+  "label": "Gift a ship",
+  "description": "Buy the player a ship (e.g. !buy ship nemesis, !buy ship katana). Price scales with the ship; '!buy ship' lists what's available. Spawns player-owned beside the player with a random loadout.",
+  "category": "Gifts",
+  "tier": 1,
+  "tier_name": "Minor Distraction",
+  "karma": "good",
+  "syntax": "!buy ship <name>",
+  "cost": 0,
+  "cost_per_unit": null,
+  "unit": null,
+  "cooldown": 60,
+  "event_cap": 5,
+  "status": "live",
+  "enabled": true
+ },
+ {
   "buy_key": "khaak",
   "nicknames": [],
   "kind": "effect",
@@ -181,25 +225,6 @@
   "unit": null,
   "cooldown": 600,
   "event_cap": 2,
-  "status": "planned",
-  "enabled": false
- },
- {
-  "buy_key": "giftship",
-  "nicknames": [],
-  "kind": "effect",
-  "label": "Gift a ship",
-  "description": "Gift the player a ship (class sets the price band).",
-  "category": "Gifts",
-  "tier": 2,
-  "tier_name": "Major Distraction",
-  "karma": "good",
-  "syntax": "!buy giftship <class>",
-  "cost": 1500,
-  "cost_per_unit": null,
-  "unit": null,
-  "cooldown": 0.0,
-  "event_cap": 0,
   "status": "planned",
   "enabled": false
  },
@@ -223,22 +248,47 @@
   "enabled": false
  },
  {
-  "buy_key": "reinforcements",
-  "nicknames": [],
+  "buy_key": "ally",
+  "nicknames": [
+   "allies",
+   "reinforcements"
+  ],
   "kind": "effect",
-  "label": "Raid reinforcements",
-  "description": "A raid sends friendly reinforcements, scaled by raider count.",
+  "label": "Spawn Allies",
+  "description": "Summon a friendly Twitch Allies squad that joins your fleet (or patrols the sector). Also auto-fires on a raid.",
   "category": "Gifts",
   "tier": 1,
   "tier_name": "Minor Distraction",
   "karma": "good",
   "syntax": "(auto on raid)",
-  "cost": 0,
+  "cost": 120,
   "cost_per_unit": null,
   "unit": null,
-  "cooldown": 0.0,
+  "cooldown": 30,
   "event_cap": 0,
-  "status": "wip",
+  "status": "live",
+  "enabled": true
+ },
+ {
+  "buy_key": "incident",
+  "nicknames": [
+   "feud",
+   "diplomacy"
+  ],
+  "kind": "effect",
+  "label": "NPC Faction Incident",
+  "description": "Sour relations between two NPC factions (uses the game's diplomacy system). Omit for two random, or name one or two of: argon, antigone, hatikvah, teladi, ministry, paranid, holyorder, trinity, alliance, terran, pioneers, boron, split, freesplit. E.g. !buy incident argon paranid",
+  "category": "Diplomacy",
+  "tier": 1,
+  "tier_name": "Minor Distraction",
+  "karma": "neutral",
+  "syntax": "!buy incident <faction1> <faction2>",
+  "cost": 300,
+  "cost_per_unit": null,
+  "unit": null,
+  "cooldown": 45,
+  "event_cap": 0,
+  "status": "live",
   "enabled": true
  },
  {

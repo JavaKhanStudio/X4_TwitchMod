@@ -143,13 +143,15 @@ local function onDecode(_, line)
   -- have one cue per action (Twitch_On<Action>). Other messages emit by type.
   local control = msg.t
   if msg.t == "cmd" and msg.id then control = tostring(msg.id) end
-  -- Pass the command's ARGS as a FLAT table, so MD reads each arg as
-  -- event.param3.$<argname> (e.g. faction_incident -> event.param3.$faction1).
-  -- Only ONE level round-trips Lua->MD via AddUITriggeredEvent (verified against
-  -- sn_mod_support_apis Capture_Lua_Callback, which reads event.param3.$id), so we
-  -- pass args directly — NOT the whole nested message. Argless cues get {} and
-  -- ignore param3.
-  signal_md(control, msg.args or {})
+  -- Pass arg VALUES as a ';'-joined STRING. Only STRINGS marshal Lua->MD via
+  -- AddUITriggeredEvent on our screen — tables arrive NOTABLE and NUMBERS don't come
+  -- through at all (both verified live via tools/x4_probe.py). So multi-value
+  -- commands send e.g. "argon;paranid"; MD matches the pair by string comparison.
+  local vals = {}
+  if type(msg.args) == "table" then
+    for _, v in pairs(msg.args) do vals[#vals + 1] = tostring(v) end
+  end
+  signal_md(control, table.concat(vals, ";"))
 end
 
 -- NOTE: in-game process spawn via FFI is NOT possible. X4 restricts dangerous

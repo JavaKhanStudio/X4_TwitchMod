@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import protocol
+from .runtime import Runtime
 
 log = logging.getLogger("commands")
 
@@ -55,8 +56,9 @@ class Command:
 
 
 class CommandEngine:
-    def __init__(self, commands, clock=time.monotonic):
+    def __init__(self, commands, clock=time.monotonic, runtime: Runtime | None = None):
         self.clock = clock
+        self.rt = runtime if runtime is not None else Runtime()
         self._by_prefix: dict[str, Command] = {}
         self._by_event: dict[str, list[Command]] = {}
         for c in commands:
@@ -110,6 +112,8 @@ class CommandEngine:
     # ---- cooldown ----------------------------------------------------------
 
     def _cooldown_ok(self, cmd: Command, user: str) -> bool:
+        if not self.rt.cooldowns_enabled:   # testing: fire with no wait
+            return True
         now = self.clock()
         if cmd.cooldown:
             last = self._last_global.get(cmd.id)

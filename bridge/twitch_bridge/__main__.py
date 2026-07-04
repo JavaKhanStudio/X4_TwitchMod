@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
+import subprocess
+import sys
 
 from .app import main
 from .config import Config
@@ -40,6 +43,18 @@ def _parse_args() -> Config:
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main(_parse_args()))
+        restart = asyncio.run(main(_parse_args()))
     except KeyboardInterrupt:
-        pass
+        restart = False
+    if restart:
+        # Graceful shutdown (in main's finally) already released the dashboard port
+        # and the X4 pipe. Launch a FRESH process with the same flags, then let this
+        # one exit. We use subprocess rather than os.execv because on Windows execv
+        # leaks the (now-closed) listen-socket handle into the child, which then
+        # can't rebind the port; close_fds=True guarantees the child starts clean.
+        logging.getLogger("app").info("restarting companion…")
+        # Drop --open: the dashboard triggering the restart reloads itself, so we
+        # must not pop a second browser tab on every restart.
+        relaunch_args = [a for a in sys.argv[1:] if a != "--open"]
+        subprocess.Popen([sys.executable, "-m", "twitch_bridge", *relaunch_args],
+                         cwd=os.getcwd(), close_fds=True)

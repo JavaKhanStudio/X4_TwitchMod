@@ -39,6 +39,35 @@ STARTER = [
             chat_prefix="!spawn", min_role="moderator",   # gated until you trust it
             cooldown=30.0, arg_names=["ship"]),
 
+    # Combat-rank query — read-only, free, everyone. The bridge just vets + forwards;
+    # MD (Twitch_OnRank) reads the game's fight statistics and answers in chat with
+    # the current rank, ships destroyed, and fight score to the next rank. Both !rank
+    # and !kills share the id "rank" so they share one 10s cooldown (no alias-hopping).
+    Command(id="rank", action="rank", chat_prefix="!rank", min_role="everyone", cooldown=10.0),
+    Command(id="rank", action="rank", chat_prefix="!kills", min_role="everyone", cooldown=10.0),
+
+    # Economic (trade) rank query — same pattern; MD cue Twitch_OnTradeRank reads
+    # stat.trade_rank / trade_score. !traderank + !econ share one 10s cooldown.
+    # (Rank-UP announcements for both ranks are auto-pushed from MD's poll loop,
+    # Twitch_RankWatch — no bridge command needed for those.)
+    Command(id="traderank", action="traderank", chat_prefix="!traderank", min_role="everyone", cooldown=10.0),
+    Command(id="traderank", action="traderank", chat_prefix="!econ", min_role="everyone", cooldown=10.0),
+
+    # simple testing commands: fire the faction spawns from chat on demand,
+    # without needing a channel-points redeem or a raid. They reuse the existing
+    # MD actions, so they hit the same cues (Twitch_OnPirateAttack /
+    # Twitch_OnReinforcements). Mod-gated so viewers can't spam them; change
+    # min_role to "everyone" for open testing.
+    Command(id="test_enemy", action="pirate_attack",
+            chat_prefix="!enemy", min_role="moderator", cooldown=5.0),
+    Command(id="test_ally", action="reinforcements",
+            chat_prefix="!ally", min_role="moderator", cooldown=5.0),
+
+    # DIAGNOSTIC: echoes the one argument MD receives back to chat, to isolate the
+    # chat->bridge->lua->MD arg-passing path from any effect logic. Usage: !argtest hello
+    Command(id="argtest", action="argtest",
+            chat_prefix="!argtest", min_role="everyone", arg_names=["value"]),
+
     # channel-points redemption (match the reward's exact title) -------------
     Command(id="pirate_attack", action="pirate_attack",
             on_event="redeem", reward="Pirate Attack",
@@ -114,6 +143,8 @@ class StoreEvent:
     status: str = "planned"          # dev progress: live | wip | planned | suggested
     default_enabled: bool = True     # ships enabled? (Major/Doom default False)
     enabled: bool = True             # current streamer setting (runtime-overridable)
+    ship_picker: bool = False        # True => "buy any ship" event: price + macro come
+                                     # from the ships.py registry, not the fixed `cost`
 
     @property
     def syntax(self) -> str:
@@ -158,8 +189,9 @@ class StoreEvent:
 CATALOG: list[StoreEvent] = [
     # Tier -1 — Debug (dev-only plumbing; never part of the viewer economy) ---
     # `!buy test` -> id "spawn" -> the MD Twitch_OnSpawn cue (spawns 20 named
-    # scouts). Free, so it's easy to fire. Remove once real effects are wired.
-    StoreEvent(id="spawn", buy_key="test", cost=0, karma="neutral", tier=-1,
+    # scouts). Priced at 1000 coins to exercise the wallet path. Remove once real
+    # effects are wired.
+    StoreEvent(id="spawn", buy_key="test", cost=1000, karma="neutral", tier=-1,
                category="Test", label="Test: spawn 20 ships", status="live",
                description="Spawns 20 player-owned scouts (Twitch 2..21) next to the player."),
 
@@ -186,6 +218,14 @@ CATALOG: list[StoreEvent] = [
                "pinged when it scores a kill or dies."),
 
     # Tier 1 — Minor Distraction (survivable) -------------------------------
+    # LIVE faction spawns (twitchfoe / twitchally). Buyable by ANYONE for coins —
+    # the coin cost is the gate, not a role — so viewers, not just mods, drive them.
+    # id must equal the MD cue's control ('pirate_attack' / 'reinforcements').
+    StoreEvent(id="pirate_attack", buy_key="enemy", nicknames=["raiders", "attack"], cost=200,
+               karma="bad", tier=1, cooldown=45, event_cap=5, category="Combat", status="live",
+               label="Spawn Raiders", description="Summon a squad of hostile Twitch Raiders "
+               "(the twitchfoe faction) that hunt the player."),
+
     StoreEvent(id="pirate_harass", buy_key="pirate", cost=180, karma="bad", tier=1,
                cooldown=120, event_cap=4, category="Combat",
                label="Pirate harassment", description="One S/M pirate jumps in to annoy the "
@@ -194,24 +234,45 @@ CATALOG: list[StoreEvent] = [
                args=["ware", "qty"], category="Gifts",
                label="Gift wares", description="Drop wares near the player; price scales with qty."),
 
+    # LIVE — buy the PLAYER any warship, priced by that ship's in-game value. The
+    # ship name + coin price + macro come from the ships.py registry (generated from
+    # game data by tools/gen_ships.py); `!buy ship` with no name lists them. id must
+    # equal the MD cue control ('gift_ship'); the bridge sends the chosen macro.
+    StoreEvent(id="gift_ship", buy_key="ship", nicknames=["ships", "buyship"],
+               args=["name"], ship_picker=True, karma="good", tier=1,
+               cooldown=60, event_cap=5, category="Gifts", status="live",
+               label="Gift a ship", description="Buy the player a ship (e.g. !buy ship nemesis, "
+               "!buy ship katana). Price scales with the ship; '!buy ship' lists what's available. "
+               "Spawns player-owned beside the player with a random loadout."),
+
     # Tier 2 — Major Distraction (a real moment; OFF by default) ------------
     StoreEvent(id="khaak_swarm", buy_key="khaak", cost=900, karma="bad", tier=2,
                cooldown=600, event_cap=2, default_enabled=False, enabled=False, category="Combat",
                label="Kha'ak swarm", description="A cluster of Kha'ak fighters jumps in and attacks."),
-    StoreEvent(id="gift_ship", buy_key="giftship", cost=1500, karma="good", tier=2,
-               args=["class"], default_enabled=False, enabled=False, category="Gifts",
-               label="Gift a ship", description="Gift the player a ship (class sets the price band)."),
 
     # Tier 3 — Doom (fleet/station-threatening; OFF, capped) ----------------
     StoreEvent(id="xenon_k", buy_key="xenonk", cost=6500, karma="doom", tier=3,
                cooldown=1800, event_cap=1, default_enabled=False, enabled=False, category="Doom",
                label="Xenon K", description="A Xenon K destroyer jumps into the player's sector."),
 
-    # Event-triggered (not !buy) — fire on Twitch events --------------------
-    StoreEvent(id="reinforcements", buy_key="reinforcements", cost=0, karma="good", tier=1,
-               on_event="raid", category="Gifts", status="wip",  # MD cue exists, effect is a stub
-               label="Raid reinforcements", description="A raid sends friendly reinforcements, "
-               "scaled by raider count."),
+    # Buyable by anyone (!buy ally) AND auto-fires free on a raid (via STARTER). ---
+    StoreEvent(id="reinforcements", buy_key="ally", nicknames=["allies", "reinforcements"],
+               cost=120, karma="good", tier=1, cooldown=30, on_event="raid",
+               category="Gifts", status="live",  # spawns a twitchally squad (MD)
+               label="Spawn Allies", description="Summon a friendly Twitch Allies squad that "
+               "joins your fleet (or patrols the sector). Also auto-fires on a raid."),
+
+    # Diplomacy — LIVE. Buyable by anyone; hooks the game's faction-relation system.
+    # Optional args name the two factions; omit for two random ones. The MD cue's
+    # $byKey list MUST mirror these keys (extensions/twitch_integration md).
+    StoreEvent(id="faction_incident", buy_key="incident", nicknames=["feud", "diplomacy"],
+               args=["faction1", "faction2"], cost=300, karma="neutral", tier=1,
+               cooldown=45, category="Diplomacy", status="live",
+               label="NPC Faction Incident",
+               description="Sour relations between two NPC factions (uses the game's diplomacy "
+               "system). Omit for two random, or name one or two of: argon, antigone, hatikvah, "
+               "teladi, ministry, paranid, holyorder, trinity, alliance, terran, pioneers, boron, "
+               "split, freesplit. E.g. !buy incident argon paranid"),
 
     # Suggested (community ideas accepted into the list; not committed) ------
     StoreEvent(id="vision", buy_key="vision", nicknames=["sats"], cost=300,
