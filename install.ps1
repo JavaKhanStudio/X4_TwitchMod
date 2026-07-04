@@ -35,10 +35,19 @@ if (-not $X4Dir -or -not (Test-Path (Join-Path $X4Dir 'extensions'))) {
 $Ext = Join-Path $X4Dir 'extensions\twitch_integration'
 Write-Host "X4 found at: $X4Dir"
 
-# --- 2. install the mod -----------------------------------------------------
+# --- 2. install the mod(s) --------------------------------------------------
 New-Item -ItemType Directory -Force -Path $Ext | Out-Null
 Copy-Item -Recurse -Force (Join-Path $Repo 'extensions\twitch_integration\*') $Ext
 Write-Host "[ok] mod installed:       $Ext"
+
+# The world-affecting arena mod is a SEPARATE extension (save="true"; needs a new
+# game). Installed too, but it does nothing until you enable it + start a new game.
+$Arena = Join-Path $X4Dir 'extensions\twitch_arena'
+if (Test-Path (Join-Path $Repo 'extensions\twitch_arena')) {
+  New-Item -ItemType Directory -Force -Path $Arena | Out-Null
+  Copy-Item -Recurse -Force (Join-Path $Repo 'extensions\twitch_arena\*') $Arena
+  Write-Host "[ok] arena mod installed: $Arena"
+}
 
 # --- 3. bundle the companion inside the mod ---------------------------------
 $Comp = Join-Path $Ext 'companion'

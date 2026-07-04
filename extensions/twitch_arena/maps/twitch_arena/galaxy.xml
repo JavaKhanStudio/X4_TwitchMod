@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The arena galaxy: a single cluster, no inter-cluster gates yet (iteration 2
+     adds a gate to the vanilla universe). Structure verified against the game's
+     own maps/demo_universe/demo_galaxy.xml. -->
+<macros>
+  <macro name="twitcharena_galaxy_macro" class="galaxy">
+    <component ref="standardgalaxy" />
+    <connections>
+      <connection name="twitcharena_cluster_connection" ref="clusters">
+        <offset>
+          <position x="0" y="0" z="0" />
+        </offset>
+        <macro ref="twitcharena_cluster_macro" connection="galaxy" />
+      </connection>
+    </connections>
+  </macro>
+</macros>

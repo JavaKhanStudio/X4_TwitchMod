@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A bare zone (positional anchor for the player start). Gates/docks attach here
+     as <connection ref="gates"/> etc. in iteration 2. -->
+<macros>
+  <macro name="twitcharena_zone_macro" class="zone">
+    <component ref="standardzone" />
+  </macro>
+</macros>

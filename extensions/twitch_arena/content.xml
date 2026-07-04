@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Twitch Arena — the "affects-the-world" companion mod (SEPARATE extension).
+
+  This is deliberately a second extension, NOT part of twitch_integration:
+    * twitch_integration  save="0"     -> no persistent world objects; safe to add
+                                          to an existing save and remove anytime.
+    * twitch_arena        save="true"  -> injects a custom sector + gamestart into
+                                          the persistent universe; needs a NEW game.
+  Keeping them apart lets people run the simple bridge on its own, and opt into the
+  arena only when they want a fresh, contained playthrough.
+
+  The dependency on twitch_integration is OPTIONAL: the arena is a valid sandbox
+  sector on its own; if the Twitch bridge mod is also enabled, chat events can
+  spawn/fight here.
+-->
+<content id="twitch_arena"
+         name="Twitch Arena"
+         description="A self-contained single-sector 'arena' and a custom game start that drops you into it — a contained stage for Twitch-driven spawns, waves and bounties. Requires a new game (adds persistent world content)."
+         author="Simon"
+         version="1"
+         date="2026-07-04"
+         save="true">
+  <dependency id="twitch_integration" optional="true"/>
+  <!-- <text language="44" name="Twitch Arena" description="..."/> -->
+</content>

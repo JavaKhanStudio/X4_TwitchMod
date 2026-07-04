@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Add a "Twitch Arena" new-game option. group="2" is the custom/creative group
+     in the new-game menu (same as the base custom starts); image reused from the
+     base custom start. jobs+god disabled so the vanilla economy never populates
+     the arena. Player drops in one Nemesis (Paranid M corvette) at the origin
+     zone. Iteration 2: second Nemesis + weapon loadouts + a friendly dock + a gate
+     out to the vanilla galaxy. -->
+<diff>
+  <add sel="/gamestarts">
+    <gamestart id="twitcharena_start"
+               name="Twitch Arena"
+               description="A sealed single-sector arena — a contained stage for Twitch-driven spawns, waves and bounties. (Iteration 1: bare sector + one Nemesis.)"
+               image="gamestart_custom_01" group="2" tags="">
+      <location galaxy="twitcharena_galaxy_macro" sector="twitcharena_sector_macro">
+        <position x="0" y="0" z="0" />
+      </location>
+      <player macro="character_player_fight_macro" money="500000" name="Player">
+        <ship macro="ship_par_m_corvette_01_a_macro" name="Twitch One" />
+      </player>
+      <universe ventures="false" visitors="false" onlineinventory="false">
+        <jobs enabled="false" />
+        <god enabled="false" />
+        <masstraffic enabled="false" />
+      </universe>
+    </gamestart>
+  </add>
+</diff>

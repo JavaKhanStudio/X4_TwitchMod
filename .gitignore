@@ -65,3 +65,6 @@ build/
 *.swp
 *~
 .DS_Store
+
+# Extracted X4 game files (modding reference only, not shipped)
+_ref/

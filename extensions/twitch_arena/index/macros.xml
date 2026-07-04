@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Register the arena's macros so the engine can resolve them by name. Without
+     these entries the galaxy/cluster/sector/zone macros are "unknown". Names are
+     lowercase; values are the file paths (no extension, backslashes) — same form
+     the base game uses for maps\demo_universe\* in index/macros.xml. -->
+<diff>
+  <add sel="/index">
+    <entry name="twitcharena_galaxy_macro" value="extensions\twitch_arena\maps\twitch_arena\galaxy" />
+    <entry name="twitcharena_cluster_macro" value="extensions\twitch_arena\maps\twitch_arena\clusters" />
+    <entry name="twitcharena_sector_macro" value="extensions\twitch_arena\maps\twitch_arena\sectors" />
+    <entry name="twitcharena_zone_macro" value="extensions\twitch_arena\maps\twitch_arena\zones" />
+  </add>
+</diff>
