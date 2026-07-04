@@ -143,7 +143,11 @@ local function onDecode(_, line)
   -- have one cue per action (Twitch_On<Action>). Other messages emit by type.
   local control = msg.t
   if msg.t == "cmd" and msg.id then control = tostring(msg.id) end
-  signal_md(control, line)
+  -- Pass the DECODED table (not the raw line) as event.param3, so MD cues can read
+  -- structured fields — e.g. faction_incident reads event.param3.$args.$faction1.
+  -- (X4's AddUITriggeredEvent carries Lua tables through to MD; effect cues that
+  -- don't need it simply ignore param3.)
+  signal_md(control, msg)
 end
 
 -- NOTE: in-game process spawn via FFI is NOT possible. X4 restricts dangerous

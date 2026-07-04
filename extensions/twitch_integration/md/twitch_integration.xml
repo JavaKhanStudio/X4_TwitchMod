@@ -89,7 +89,7 @@
         <event_ui_triggered screen="'Twitch_Integration'" control="'ping'"/>
       </conditions>
       <actions>
-        <debug_text text="'[Twitch] ping: %s'.[event.param3]" filter="general"/>
+        <debug_text text="'[Twitch] ping'" filter="general"/>
         <signal_cue_instantly cue="Twitch_Say" param="'pong'"/>
       </actions>
     </cue>
@@ -143,7 +143,7 @@
         <event_ui_triggered screen="'Twitch_Integration'" control="'pirate_attack'"/>
       </conditions>
       <actions>
-        <debug_text text="'[Twitch] pirate_attack: %s'.[event.param3]" filter="general"/>
+        <debug_text text="'[Twitch] pirate_attack'" filter="general"/>
         <do_if value="player.occupiedship.exists">
           <set_value name="$ref" exact="player.occupiedship"/>
         </do_if>
@@ -193,7 +193,7 @@
         <event_ui_triggered screen="'Twitch_Integration'" control="'reinforcements'"/>
       </conditions>
       <actions>
-        <debug_text text="'[Twitch] reinforcements: %s'.[event.param3]" filter="general"/>
+        <debug_text text="'[Twitch] reinforcements'" filter="general"/>
         <do_if value="player.occupiedship.exists">
           <set_value name="$ref" exact="player.occupiedship"/>
         </do_if>
@@ -241,7 +241,7 @@
         <event_ui_triggered screen="'Twitch_Integration'" control="'sub_reward'"/>
       </conditions>
       <actions>
-        <debug_text text="'[Twitch] sub_reward: %s'.[event.param3]" filter="general"/>
+        <debug_text text="'[Twitch] sub_reward'" filter="general"/>
         <!-- TODO: grant a perk to the player -->
       </actions>
     </cue>
@@ -251,8 +251,63 @@
         <event_ui_triggered screen="'Twitch_Integration'" control="'cheer_boost'"/>
       </conditions>
       <actions>
-        <debug_text text="'[Twitch] cheer_boost: %s'.[event.param3]" filter="general"/>
+        <debug_text text="'[Twitch] cheer_boost'" filter="general"/>
         <!-- TODO: temporary boost scaled by args.$bits -->
+      </actions>
+    </cue>
+
+    <!-- NPC Faction Incident: shift the standing between two NPC factions using the
+         game's own diplomacy hook (add_faction_relation, verified against
+         md/diplomacy.xml). The two factions come from the !buy args
+         (event.param3.$args.$faction1 / $faction2, passed as a table by the ui lua);
+         if omitted or not recognised, two random distinct factions are chosen.
+         Sours their relation by 0.10..0.20 so repeated incidents can flip neutrals
+         toward war. The $byKey map + $factions list MIRROR the faction keys listed
+         in bridge catalog.py (faction_incident description). -->
+    <cue name="Twitch_OnFactionIncident" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'faction_incident'"/>
+      </conditions>
+      <actions>
+        <set_value name="$factions" exact="[faction.argon, faction.antigone, faction.hatikvah, faction.teladi, faction.ministry, faction.paranid, faction.holyorder, faction.trinity, faction.alliance, faction.terran, faction.pioneers, faction.boron, faction.split, faction.freesplit]"/>
+        <set_value name="$byKey" exact="table[]"/>
+        <set_value name="$byKey.{'argon'}"     exact="faction.argon"/>
+        <set_value name="$byKey.{'antigone'}"  exact="faction.antigone"/>
+        <set_value name="$byKey.{'hatikvah'}"  exact="faction.hatikvah"/>
+        <set_value name="$byKey.{'teladi'}"    exact="faction.teladi"/>
+        <set_value name="$byKey.{'ministry'}"  exact="faction.ministry"/>
+        <set_value name="$byKey.{'paranid'}"   exact="faction.paranid"/>
+        <set_value name="$byKey.{'holyorder'}" exact="faction.holyorder"/>
+        <set_value name="$byKey.{'trinity'}"   exact="faction.trinity"/>
+        <set_value name="$byKey.{'alliance'}"  exact="faction.alliance"/>
+        <set_value name="$byKey.{'terran'}"    exact="faction.terran"/>
+        <set_value name="$byKey.{'pioneers'}"  exact="faction.pioneers"/>
+        <set_value name="$byKey.{'boron'}"     exact="faction.boron"/>
+        <set_value name="$byKey.{'split'}"     exact="faction.split"/>
+        <set_value name="$byKey.{'freesplit'}" exact="faction.freesplit"/>
+
+        <!-- try the two specified factions from the buy args (null-safe lookups) -->
+        <set_value name="$facA" exact="@$byKey.{@event.param3.$args.$faction1}"/>
+        <set_value name="$facB" exact="@$byKey.{@event.param3.$args.$faction2}"/>
+
+        <!-- fall back to two random DISTINCT factions if not both specified/valid -->
+        <do_if value="not $facA? or not $facB? or $facA == $facB">
+          <set_value name="$i" min="1" max="$factions.count"/>
+          <set_value name="$facA" exact="$factions.{$i}"/>
+          <set_value name="$j" exact="$i"/>
+          <do_while value="$j == $i">
+            <set_value name="$j" min="1" max="$factions.count"/>
+          </do_while>
+          <set_value name="$facB" exact="$factions.{$j}"/>
+        </do_if>
+
+        <!-- sour their standing (game diplomacy system) -->
+        <set_value name="$pct" min="10" max="20"/>
+        <set_value name="$delta" exact="-$pct / 100.0"/>
+        <add_faction_relation faction="$facA" otherfaction="$facB" value="$delta"/>
+        <debug_text text="'[Twitch] incident: %s vs %s (%s)'.[$facA.name, $facB.name, $delta]" filter="general"/>
+        <signal_cue_instantly cue="Twitch_Say"
+          param="'Diplomatic incident! Relations between ' + $facA.name + ' and ' + $facB.name + ' just soured.'"/>
       </actions>
     </cue>
 
