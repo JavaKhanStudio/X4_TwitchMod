@@ -68,6 +68,9 @@ PAGE = """<!doctype html>
   .steps ul.sub li{margin:2px 0}
   .note{background:#9146ff14;border:1px solid #9146ff44;border-radius:9px;padding:9px 12px;
     font-size:12.5px;color:#cbb6ff;margin:0 0 14px}
+  .hint{background:#f5a62314;border:1px solid #f5a62355;border-radius:9px;padding:8px 11px;
+    font-size:12px;line-height:1.45;color:#f5c877;margin:8px 0 2px}
+  .hint b{color:#ffd68a}
   .steps code{background:#0e0f1a;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:#8cd0ff}
   .steps a{color:#8cd0ff}
   .form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
@@ -129,6 +132,10 @@ PAGE = """<!doctype html>
     </div>
     <div class="card"><h2>X4 (game)</h2>
       <div class="row"><span class="k">Link</span><span class="v"><span id="x4dot" class="dot"></span> <span id="x4state">—</span></span></div>
+      <div id="x4hint" class="hint" style="display:none">⚠️ <b>Not linked?</b> In X4 open <b>Settings → Extensions</b>, then:
+        <b>①</b> enable <i>Twitch Integration</i> &amp; <i>Mod Support APIs</i> ·
+        <b>②</b> turn <b>Protected UI Mode OFF</b> (required to load the pipe) ·
+        <b>③</b> restart X4 and load a save. The link turns green automatically.</div>
       <div class="row"><span class="k">Socket</span><span class="v" id="socket" style="font-size:12px">—</span></div>
       <div class="row"><span class="k">Uptime</span><span class="v" id="uptime">—</span></div>
     </div>
@@ -182,6 +189,7 @@ async function tick(){
         else html($('cstate'),tw.connecting?'authorizing… <b>check your browser</b>':(tw.error?('<span class="err">'+esc(tw.error)+'</span>'):'')); }
     } else { disp($('setup'),false); dot($('srcdot'),s.source_running); txt($('srcstate'),s.source_running?'running':'stopped'); }
     dot($('x4dot'),s.x4_connected); txt($('x4state'),s.x4_connected?'linked':'waiting');
+    disp($('x4hint'),!s.x4_connected);
     txt($('socket'),s.socket_path||'—'); txt($('uptime'),fmtUp(s.uptime_s));
     txt($('ein'),s.events_in); txt($('cmd'),s.commands_fired); txt($('out'),s.actions_out);
     const e=s.econ||{};
