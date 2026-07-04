@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English (language id 44) text for the Twitch factions. X4 auto-loads t/ files
+     for extensions; no index needed. Page 90042 is referenced from factions.xml. -->
+<language id="44">
+  <page id="90042" title="Twitch Factions" descr="Faction names for the Twitch integration mod." voice="no">
+    <!-- twitchally -->
+    <t id="1">Twitch Allies</t>
+    <t id="2">Ships summoned by chat to fight for you.</t>
+    <t id="3">Allies</t>
+    <t id="4">Twitch Ally</t>
+    <t id="5">Allied Space</t>
+    <t id="6">Ally Territory</t>
+    <!-- twitchfoe -->
+    <t id="11">Twitch Raiders</t>
+    <t id="12">Ships summoned by chat to fight against you.</t>
+    <t id="13">Raiders</t>
+    <t id="14">Twitch Raider</t>
+    <t id="15">Raider Space</t>
+    <t id="16">Raider Territory</t>
+  </page>
+</language>

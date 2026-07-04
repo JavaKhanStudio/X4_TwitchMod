@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Two Twitch factions, added to the SAVE-SAFE mod (this one is save="0").
+
+  Why this is save-compatible: a faction is a definition loaded fresh at every
+  game start/load, and these two own NO territory and NO god-seeded stations
+  (which only place on a NEW game). Their ships come purely from our MD spawns,
+  so they light up on an existing save without a new playthrough.
+
+    twitchally  -> allied with the player  (relation +1, locked)
+    twitchfoe   -> at war with the player  (relation -1, locked)  and with twitchally
+
+  Kept minimal/low-risk: reuse existing colours + icons (faction_argon /
+  faction_xenon), behaviourset="default", tags="hidden" (functional, but no
+  diplomacy-menu assets required). Relations are `locked` so diplomacy can't
+  drift them. Structure verified against the game's libraries/factions.xml
+  (khaak / civilian / ownerless).
+-->
+<diff>
+  <add sel="/factions">
+    <faction id="twitchally" name="{90042,1}" description="{90042,2}" shortname="{90042,3}"
+             prefixname="{90042,4}" spacename="{90042,5}" homespacename="{90042,6}"
+             primaryrace="argon" behaviourset="default" tags="hidden">
+      <color ref="faction_argon" />
+      <icon active="faction_argon" inactive="faction_argon" />
+      <relations locked="1">
+        <relation faction="player" relation="1" />
+        <relation faction="twitchfoe" relation="-1" />
+      </relations>
+    </faction>
+    <faction id="twitchfoe" name="{90042,11}" description="{90042,12}" shortname="{90042,13}"
+             prefixname="{90042,14}" spacename="{90042,15}" homespacename="{90042,16}"
+             primaryrace="argon" behaviourset="default" tags="hidden">
+      <color ref="faction_xenon" />
+      <icon active="faction_xenon" inactive="faction_xenon" />
+      <relations locked="1">
+        <relation faction="player" relation="-1" />
+        <relation faction="twitchally" relation="-1" />
+      </relations>
+    </faction>
+  </add>
+</diff>

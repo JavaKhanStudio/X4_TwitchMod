@@ -135,24 +135,104 @@
       </actions>
     </cue>
 
+    <!-- Spawn a hostile squad owned by the 'twitchfoe' faction (at war with the
+         player; see libraries/factions.xml) and order it to hunt the player.
+         Ship/order/loadout syntax verified against the game's md/gm_ambush.xml. -->
     <cue name="Twitch_OnPirateAttack" instantiate="true">
       <conditions>
         <event_ui_triggered screen="'Twitch_Integration'" control="'pirate_attack'"/>
       </conditions>
       <actions>
         <debug_text text="'[Twitch] pirate_attack: %s'.[event.param3]" filter="general"/>
-        <!-- TODO: spawn a hostile pirate squad -->
+        <do_if value="player.occupiedship.exists">
+          <set_value name="$ref" exact="player.occupiedship"/>
+        </do_if>
+        <do_else>
+          <set_value name="$ref" exact="player.entity"/>
+        </do_else>
+        <do_if value="$ref.exists">
+          <set_value name="$n" exact="1"/>
+          <do_while value="$n le 5">
+            <create_ship name="$foe" macro="ship_arg_s_fighter_02_a_macro" zone="player.zone">
+              <owner exact="faction.twitchfoe" overridenpc="true"/>
+              <pilot>
+                <select race="race.argon" tags="tag.aipilot"/>
+              </pilot>
+              <loadout>
+                <quantity exact="1.0"><variation exact="0"/></quantity>
+                <quality exact="0.4"/>
+              </loadout>
+              <orientation refobject="$ref" orientation="look_at"/>
+              <safepos object="$ref" x="($n - 3) * 0.4km" y="0" z="4km"/>
+            </create_ship>
+            <do_if value="$foe?">
+              <set_object_name object="$foe" name="'Twitch Raider %s'.[$n]"/>
+              <cancel_all_orders object="$foe"/>
+              <create_order object="$foe" id="'Patrol'" default="true"/>
+              <create_order object="$foe" id="'Attack'" immediate="true">
+                <param name="primarytarget" value="player.ship"/>
+                <param name="secondarytargets" value="player.ship.subordinates"/>
+                <param name="pursuetargets" value="true"/>
+                <param name="allowothertargets" value="true"/>
+                <param name="checkrelation" value="true"/>
+              </create_order>
+            </do_if>
+            <set_value name="$n" exact="$n + 1"/>
+          </do_while>
+          <debug_text text="'[Twitch] spawned Twitch Raiders (hostile)'" filter="general"/>
+        </do_if>
       </actions>
     </cue>
 
+    <!-- Spawn a friendly squad owned by the 'twitchally' faction (allied with the
+         player). If the player is flying, they join the player's fleet as
+         defenders; otherwise they patrol the sector (engaging Twitch Raiders,
+         since twitchally is at war with twitchfoe). -->
     <cue name="Twitch_OnReinforcements" instantiate="true">
       <conditions>
         <event_ui_triggered screen="'Twitch_Integration'" control="'reinforcements'"/>
       </conditions>
       <actions>
         <debug_text text="'[Twitch] reinforcements: %s'.[event.param3]" filter="general"/>
-        <!-- TODO: friendly reinforcements scaled by args.$viewers -->
-        <signal_cue_instantly cue="Twitch_Say" param="'Thanks for the raid!'"/>
+        <do_if value="player.occupiedship.exists">
+          <set_value name="$ref" exact="player.occupiedship"/>
+        </do_if>
+        <do_else>
+          <set_value name="$ref" exact="player.entity"/>
+        </do_else>
+        <do_if value="$ref.exists">
+          <set_value name="$n" exact="1"/>
+          <do_while value="$n le 4">
+            <create_ship name="$ally" macro="ship_arg_s_fighter_02_a_macro" zone="player.zone">
+              <owner exact="faction.twitchally" overridenpc="true"/>
+              <pilot>
+                <select race="race.argon" tags="tag.aipilot"/>
+              </pilot>
+              <loadout>
+                <quantity exact="1.0"><variation exact="0"/></quantity>
+                <quality exact="0.4"/>
+              </loadout>
+              <orientation refobject="$ref" orientation="look_at"/>
+              <safepos object="$ref" x="($n - 2) * 0.4km" y="0" z="1.5km"/>
+            </create_ship>
+            <do_if value="$ally?">
+              <set_object_name object="$ally" name="'Twitch Ally %s'.[$n]"/>
+              <cancel_all_orders object="$ally"/>
+              <do_if value="player.occupiedship.exists">
+                <create_order id="'AssignCommander'" object="$ally">
+                  <param name="commander" value="player.occupiedship"/>
+                  <param name="assignment" value="assignment.defend"/>
+                  <param name="cancelorders" value="true"/>
+                </create_order>
+              </do_if>
+              <do_else>
+                <create_order object="$ally" id="'Patrol'" default="true"/>
+              </do_else>
+            </do_if>
+            <set_value name="$n" exact="$n + 1"/>
+          </do_while>
+          <signal_cue_instantly cue="Twitch_Say" param="'Reinforcements have arrived!'"/>
+        </do_if>
       </actions>
     </cue>
 
