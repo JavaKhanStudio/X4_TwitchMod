@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Twitch sector (MAIN universe): one zone at the origin. Same shape as the arena
+     sector, but this one is attached to XU_EP2_universe_macro (see
+     maps/XU_ep2_universe/galaxy.xml) so the HQ research/teleport systems — which
+     the game hard-gates to the main galaxy — work natively here. -->
+<macros>
+  <macro name="twitchmain_sector_macro" class="sector">
+    <component ref="standardsector" />
+    <connections>
+      <connection name="twitchmain_zone_connection" ref="zones">
+        <offset>
+          <position x="0" y="0" z="0" />
+        </offset>
+        <macro ref="twitchmain_zone_macro" connection="sector" />
+      </connection>
+    </connections>
+  </macro>
+</macros>

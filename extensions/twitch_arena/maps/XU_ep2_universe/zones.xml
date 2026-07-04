@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Far end of the Twitch gate: add a gate to Grand Exchange I
+     (Zone001_Cluster_01_Sector001_macro, which already hosts the gate to sector
+     005, so it is a known-good gate-bearing zone with a <connections> element).
+     Same-path diff against the base game's maps/XU_ep2_universe/zones.xml.
+     The galaxy <destination> connection (maps/XU_ep2_universe/galaxy.xml) links
+     this gate to connection_gate_twitch_to_ge in twitchmain_zone_macro. -->
+<diff>
+  <add sel="/macros/macro[@name='Zone001_Cluster_01_Sector001_macro']/connections">
+    <connection name="connection_gate_ge_to_twitch" ref="gates">
+      <offset>
+        <position x="40000" y="0" z="-40000" />
+        <quaternion qx="0" qy="0" qz="0" qw="1" />
+      </offset>
+      <macro ref="props_gates_anc_gate_macro" connection="space" />
+    </connection>
+  </add>
+</diff>

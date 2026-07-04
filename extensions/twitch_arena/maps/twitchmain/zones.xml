@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Twitch sector (in the MAIN universe) — bare zone at the origin, the player's
+     start anchor. Mirror of the arena's zone. -->
+<macros>
+  <macro name="twitchmain_zone_macro" class="zone">
+    <component ref="standardzone" />
+    <connections>
+      <!-- Gate to Grand Exchange I (Cluster_01_Sector001). The far end is added to
+           that vanilla zone by maps/XU_ep2_universe/zones.xml, and the two are
+           linked by the <destination> connection in maps/XU_ep2_universe/galaxy.xml.
+           Sits 15km from the sector origin where the player spawns. -->
+      <connection name="connection_gate_twitch_to_ge" ref="gates">
+        <offset>
+          <position x="0" y="0" z="15000" />
+          <quaternion qx="0" qy="0" qz="0" qw="1" />
+        </offset>
+        <macro ref="props_gates_anc_gate_macro" connection="space" />
+      </connection>
+    </connections>
+  </macro>
+</macros>

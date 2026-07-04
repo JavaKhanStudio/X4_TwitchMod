@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Twitch Arena — Mission Director script. Two independent cues so a failure in one
+  can't block the other:
+
+    1. TwitchArena_SetupHQ   — give the god-placed HQ a station manager so it is
+                               operational. (The mentor SetupHQ adds defence/engineer
+                               computers but NOT a manager, same split as gs_boso.xml.)
+                               Research UI + Boso/Dal are handled by the base
+                               mentor/diplomacy scripts via the gamestart story states
+                               (libraries/gamestarts.xml universe/stories) — nothing to
+                               do here for those. The research flag set below is a
+                               harmless safety net (no-ops once the mentor's own
+                               UnlockResearch has set it).
+
+    2. TwitchArena_RevealMap — full map knowledge for the Twitch Sector start. Kept
+                               SEPARATE from the HQ setup on purpose: an earlier version
+                               nested this after the manager/research actions in the HQ
+                               cue, so if the HQ lookup or an earlier action bailed, the
+                               reveal never ran. Gated on the player's start sector, not
+                               the HQ.
+
+  Both self-gate to the right start: the arena sector only exists in the arena galaxy,
+  the twitchmain sector only in the main galaxy; on a vanilla start neither the god HQ
+  nor a twitchmain player.sector is present.
+-->
+<mdscript name="Twitch_Arena" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+
+    <cue name="TwitchArena_SetupHQ">
+      <conditions>
+        <event_game_started/>
+      </conditions>
+      <delay exact="2s" comment="let the god HQ finish initialising"/>
+      <actions>
+        <find_sector name="$HQSector" macro="macro.twitchmain_sector_macro"/>
+        <do_if value="$HQSector.exists">
+          <find_station name="$HQ" space="$HQSector" godstationentry="'twitchmain_player_hq'"/>
+        </do_if>
+        <do_else>
+          <find_sector name="$HQSector" macro="macro.twitcharena_sector_macro"/>
+          <do_if value="$HQSector.exists">
+            <find_station name="$HQ" space="$HQSector" godstationentry="'twitcharena_player_hq'"/>
+          </do_if>
+        </do_else>
+        <do_if value="$HQ.exists">
+          <create_control_entity object="$HQ" post="controlpost.manager">
+            <select tags="controlpost.manager.tag" faction="faction.player"/>
+            <owner exact="$HQ.owner"/>
+          </create_control_entity>
+          <do_if value="not @player.entity.$x4ep1_hq_research_unlocked">
+            <set_value name="player.entity.$x4ep1_hq_research_unlocked"/>
+            <find_object_component name="$ResearchModule" macro="macro.landmarks_player_hq_01_research_macro" object="$HQ"/>
+            <do_if value="$ResearchModule.exists">
+              <set_object_name object="$ResearchModule" page="20104" line="101701"/>
+            </do_if>
+          </do_if>
+          <debug_text text="'[TwitchArena] HQ manager assigned'" filter="general"/>
+        </do_if>
+      </actions>
+    </cue>
+
+    <cue name="TwitchArena_RevealMap">
+      <conditions>
+        <event_game_started/>
+      </conditions>
+      <delay exact="3s"/>
+      <actions>
+        <!-- DIAGNOSTIC: fires unconditionally so the log tells us whether the cue
+             runs and what player.sector is, vs the gate silently being false. -->
+        <find_sector name="$TwitchSector" macro="macro.twitchmain_sector_macro"/>
+        <debug_text text="'[TwitchArena] RevealMap cue fired. twitchSectorExists=%s playerSector=%s match=%s'.[$TwitchSector.exists, player.sector.knownname, player.sector == $TwitchSector]" filter="general"/>
+        <do_if value="$TwitchSector.exists and player.sector == $TwitchSector">
+          <find_sector name="$AllSectors" multiple="true"/>
+          <do_for_each name="$Sector" in="$AllSectors">
+            <set_known object="$Sector" known="true"/>
+            <set_known object="$Sector.cluster" known="true"/>
+            <find_object name="$Gates" class="class.gate" space="$Sector" multiple="true"/>
+            <do_for_each name="$Gate" in="$Gates">
+              <set_known object="$Gate" known="true"/>
+            </do_for_each>
+          </do_for_each>
+          <debug_text text="'[TwitchArena] full map revealed (%s sectors)'.[$AllSectors.count]" filter="general"/>
+        </do_if>
+      </actions>
+    </cue>
+
+  </cues>
+</mdscript>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cluster holding the main-universe Twitch sector, with the Cluster_01 backdrop
+     component reused for a clean visual (same as the arena cluster). -->
+<macros>
+  <macro name="twitchmain_cluster_macro" class="cluster">
+    <component ref="standardcluster" />
+    <connections>
+      <connection name="twitchmain_sector_connection" ref="sectors">
+        <macro ref="twitchmain_sector_macro" connection="cluster" />
+      </connection>
+      <connection ref="content">
+        <macro>
+          <component connection="space" ref="Cluster_01" />
+        </macro>
+      </connection>
+    </connections>
+  </macro>
+</macros>

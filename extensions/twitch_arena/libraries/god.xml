@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Places the player Headquarters into the arena sector for the Twitch Arena start.
+
+  THIS is how vanilla does it (verified by extracting the base game's own
+  libraries/god.xml — see the "scientific gamestart player HQ" entry, id
+  x4ep1_gamestart_scientist_hq). Key points learned the hard way:
+
+    * type="headquarters" is what REGISTERS the station as the player HQ, which is
+      what actually enables the Research menu + teleportation. A plain station (or
+      an MD create_station) does NOT do this.
+    * The HQ is created HERE, by god, at new-game generation. The vanilla HQ
+      gamestarts then just anchor the player to it via <location station=..>. We
+      keep our ship-drop instead, so the HQ simply exists ~25km from the player.
+    * <quota gamestart="twitcharena_start"> gates it to our start only. The arena
+      extension is enabled globally, so without this gate every game would get a
+      stray HQ. This mirrors the vanilla per-gamestart quota exactly.
+    * constructionplan 'x4ep1_playerheadquarters_with_dock' is the vanilla HQ plan
+      (includes a dock, so Twitch One can dock). level=1.0 builds it fully so
+      research/teleport work immediately (vanilla uses 0.2 because the plot has you
+      finish building it; we want it complete from the start).
+-->
+<diff xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <add sel="/god/stations">
+    <station id="twitcharena_player_hq" race="argon" owner="player" type="headquarters">
+      <quotas>
+        <quota galaxy="1" zone="1" gamestart="twitcharena_start" />
+      </quotas>
+      <location class="sector" macro="twitcharena_sector_macro" />
+      <position x="0" y="0" z="25000" pitch="0" roll="0" yaw="0" />
+      <station constructionplan="'x4ep1_playerheadquarters_with_dock'">
+        <loadout>
+          <level exact="1.0" />
+        </loadout>
+      </station>
+    </station>
+
+    <!-- HQ for the MAIN-universe Twitch sector start. Same definition, gated to
+         twitchmain_start. Because this sector is inside XU_EP2_universe_macro, the
+         research/teleport unlock works natively (the mentor system runs here). -->
+    <station id="twitchmain_player_hq" race="argon" owner="player" type="headquarters">
+      <quotas>
+        <quota galaxy="1" zone="1" gamestart="twitchmain_start" />
+      </quotas>
+      <location class="sector" macro="twitchmain_sector_macro" />
+      <position x="0" y="0" z="25000" pitch="0" roll="0" yaw="0" />
+      <station constructionplan="'x4ep1_playerheadquarters_with_dock'">
+        <loadout>
+          <level exact="1.0" />
+        </loadout>
+      </station>
+    </station>
+  </add>
+</diff>

@@ -9,5 +9,11 @@
     <entry name="twitcharena_cluster_macro" value="extensions\twitch_arena\maps\twitch_arena\clusters" />
     <entry name="twitcharena_sector_macro" value="extensions\twitch_arena\maps\twitch_arena\sectors" />
     <entry name="twitcharena_zone_macro" value="extensions\twitch_arena\maps\twitch_arena\zones" />
+    <!-- Main-universe Twitch sector (attached to XU_EP2_universe_macro via
+         maps\XU_ep2_universe\galaxy.xml). The galaxy macro itself is vanilla, so
+         only the new cluster/sector/zone are registered here. -->
+    <entry name="twitchmain_cluster_macro" value="extensions\twitch_arena\maps\twitchmain\clusters" />
+    <entry name="twitchmain_sector_macro" value="extensions\twitch_arena\maps\twitchmain\sectors" />
+    <entry name="twitchmain_zone_macro" value="extensions\twitch_arena\maps\twitchmain\zones" />
   </add>
 </diff>
