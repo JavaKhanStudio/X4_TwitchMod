@@ -3,19 +3,30 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# The MD pipe NAME (md/twitch_integration.xml uses "twitch"). On Windows the stock
+# SirNukes Named Pipes API prefixes it with \\.\pipe\ ; on Linux the bekopharm fork
+# maps it to <name>.xml in the savegame folder. Keep both in sync with the MD.
+PIPE_NAME = "twitch"
+
 
 def _default_socket() -> str:
-    # The bekopharm linux-compat fork hosts the Unix socket in the X4 savegame
-    # folder (the only dir X4 Lua can unlink). A `.xml` extension lets X4 clean
-    # it up itself. See docs/06-ecosystem-survey.md.
+    # Windows: X4's winpipe connects (as CLIENT) to \\.\pipe\<name>; the bridge
+    # HOSTS that pipe (see x4link._run_win_server + docs/02 Path A).
+    if sys.platform == "win32":
+        return r"\\.\pipe\%s" % PIPE_NAME
+
+    # Linux: the bekopharm linux-compat fork hosts the Unix socket in the X4
+    # savegame folder (the only dir X4 Lua can unlink). A `.xml` extension lets X4
+    # clean it up itself. See docs/06-ecosystem-survey.md.
     #
-    # The filename is the MD pipe NAME ("twitch" in md/Twitch_Integration.xml) +
-    # ".xml" — the fork strips any Windows pipe path and uses <name>.xml. The save
-    # dir lives under a per-user numeric id (e.g. .../X4/<id>/save), which the
-    # fork auto-detects via C.GetSaveFolderPath(); we glob for it so no hard-coded id.
+    # The filename is the MD pipe NAME + ".xml" — the fork strips any Windows pipe
+    # path and uses <name>.xml. The save dir lives under a per-user numeric id
+    # (e.g. .../X4/<id>/save), which the fork auto-detects via C.GetSaveFolderPath();
+    # we glob for it so no hard-coded id.
     egosoft = Path.home() / ".config" / "EgoSoft" / "X4"
     candidates = sorted(
         (p for p in egosoft.glob("*/save") if p.is_dir()),

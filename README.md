@@ -46,10 +46,29 @@ API**; the companion connects in as a client. (In-game process spawning is block
 sandbox, so the companion is started separately — see [`docs/09`](docs/09-onboarding-oauth-and-companion-ux.md).)
 
 ## Quick start
+
+### Linux (native X4 via the LuaSocket fork)
 ```bash
 pip install -r bridge/requirements.txt   # one-time Python deps (twitchAPI)
 ./install.sh                             # mod → X4 + companion bundled inside the mod + app launcher
 ```
+
+### Windows (native X4 via the stock SirNukes Named Pipes API)
+On Windows the transport is a **native named pipe** (`\\.\pipe\twitch`): the same
+mod + MD, but the companion HOSTS the pipe and X4 connects in as a client (the
+mirror image of the Linux Unix-socket setup — no LuaSocket fork needed, just the
+stock **SirNukes Mod Support APIs**, which you already have if pipes-based mods work).
+```powershell
+py -m pip install -r bridge\requirements.txt              # one-time Python deps (twitchAPI)
+powershell -ExecutionPolicy Bypass -File .\install.ps1    # auto-detects X4, or pass -X4Dir '...'
+# then start the companion (dashboard opens in your browser):
+powershell -ExecutionPolicy Bypass -File "<X4>\extensions\twitch_integration\companion\run-companion.ps1"
+```
+In X4: **Settings → Extensions** → enable *Twitch Integration* (and *SirNukes Mod
+Support APIs*), turn **Protected UI Mode OFF** (needed to load the winpipe DLL),
+then load a save. The companion's dashboard shows **X4: connected** once the game
+attaches to the pipe.
+
 Then launch **"X4 ⇄ Twitch Companion"** from your application menu — no file-hunting. The
 companion lives *inside* the installed mod
 (`<X4>/extensions/twitch_integration/companion/`), so it travels with the mod and is found

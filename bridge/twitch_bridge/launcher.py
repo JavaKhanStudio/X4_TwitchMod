@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 APP_NAME = "X4 Twitch Companion"          # plain name — no symbols in the menu entry
@@ -44,7 +45,13 @@ def desktop_contents(script: Path) -> str:
 
 
 def ensure_launcher() -> Path | None:
-    """Create/refresh the launcher if needed. Returns its path, or None if skipped."""
+    """Create/refresh the launcher if needed. Returns its path, or None if skipped.
+
+    The .desktop app-menu entry is a Linux (freedesktop) concept; on Windows the
+    companion is started from run-companion.ps1 / the Steam launch option, so we
+    skip this entirely."""
+    if sys.platform == "win32":
+        return None
     script = companion_script()
     if script is None:
         return None

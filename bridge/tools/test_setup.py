@@ -26,8 +26,13 @@ p = tempfile.mktemp(suffix=".json")
 setup_store.save({"client_id": "abc", "client_secret": "shh", "channel": "Me"}, p)
 got = setup_store.load(p)
 check(got == {"client_id": "abc", "client_secret": "shh", "channel": "Me"}, "setup_store round-trip")
-import os
-check((os.stat(p).st_mode & 0o777) == 0o600, "setup.json is chmod 600 (owner-only)")
+import os, sys
+if sys.platform == "win32":
+    # POSIX mode bits don't apply on Windows (os.chmod only toggles read-only);
+    # the secret is protected by the per-user profile's NTFS ACL instead.
+    check(os.path.exists(p), "setup.json written (Windows: ACL-protected profile dir)")
+else:
+    check((os.stat(p).st_mode & 0o777) == 0o600, "setup.json is chmod 600 (owner-only)")
 check(setup_store.load(tempfile.mktemp()) == {}, "missing setup file -> empty dict")
 
 # --- dashboard POST /api/connect calls the callback with the body ---
