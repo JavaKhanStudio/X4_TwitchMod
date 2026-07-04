@@ -154,6 +154,13 @@
         <stories>
           <story ref="story_hq_boso" state="1" />
           <story ref="story_hq_dal" state="1" />
+          <!-- Diplomacy network already established (base game). -->
+          <story ref="story_diplomacy_network" state="1" />
+          <!-- Envoy situation already done (ego_dlc_mini_02 / Hyperion). -->
+          <story ref="story_envoy" state="1" />
+          <!-- Timelines situation advanced to Grandmother (ego_dlc_timelines).
+               The other timelines point is story_timelines_quettanaut. -->
+          <story ref="story_timelines_grandmother" state="1" />
         </stories>
       </universe>
     </gamestart>

@@ -22,5 +22,10 @@
          date="2026-07-04"
          save="true">
   <dependency id="twitch_integration" optional="true"/>
+  <!-- Optional: the twitchmain_start gamestart pre-sets these DLCs' story states
+       (story_envoy / story_timelines_grandmother). Only needed if you play that
+       start; without the DLC the corresponding <story> line simply has no effect. -->
+  <dependency id="ego_dlc_mini_02" optional="true"/>
+  <dependency id="ego_dlc_timelines" optional="true"/>
   <!-- <text language="44" name="Twitch Arena" description="..."/> -->
 </content>
