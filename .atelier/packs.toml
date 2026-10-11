@@ -1,0 +1,140 @@
+# X4_TwitchMod's TAGS AND THEIR CONTEXT PACKS — read by Atelier (the board file says
+# packs = ".atelier/packs.toml"). A pack is what a session reads BEFORE the code it describes,
+# so when a change makes one wrong, fix it here IN THE SAME COMMIT. Only [tags.<slug>]
+# tables belong in this file: label, description, context, color, sort.
+#
+# THIS REPO IS PUBLIC (SECURITY.md): no home path, no X4 numeric user-id, no token in here.
+# Write <X4>, <SAVE>, <id>, as the docs do.
+#
+# Written 2026-10-12 at connect time (procedure run p69) from READING: README.md, SECURITY.md,
+# .claude/skills/x4-modding/SKILL.md (the real agent guide), docs/DEVLOG.md, bridge/README.md,
+# both extension READMEs, bridge/twitch_bridge/*.py, and by RUNNING every bridge/tools/test_*.py
+# and check_macros.py under WSL. No session has worked a ticket here yet: a FIRST DRAFT.
+
+[tags.companion]
+label = "Companion"
+description = "bridge/ as a process: app.py, x4link/ (unix socket + Windows pipe), protocol.py, config.py, runtime, dashboard + OAuth setup panel, launcher, sources/, run-companion.*, install.sh / install.ps1"
+color = "#9146ff"
+sort = 10
+context = """
+The companion is the only thing that talks to Twitch: X4's sandbox has no network and blocks
+FFI `system` (docs/DEVLOG.md, "In-game process spawn via FFI — BLOCKED"). protocol.py is THE
+contract: one compact JSON object a line. A new `t` type needs a constant there AND its
+handler on the receiving side: a cue in extensions/twitch_integration/md/twitch_integration.xml
+for bridge -> X4, a branch in app.py (as FLEET, CMDFAIL) for X4 -> bridge.
+Transport is per OS (x4link/): on Linux X4 HOSTS `<SAVE>/twitch.xml` and the bridge connects;
+on Windows the bridge HOSTS `\\\\.\\pipe\\twitch` and X4 connects. PIPE_NAME in config.py must
+match the MD pipe name "twitch".
+Run it without Twitch or X4: `cd bridge && python3 -m twitch_bridge --source stdin --no-launcher
+--socket /tmp/x.sock`, with `python3 tools/mock_x4.py --socket /tmp/x.sock` as the game.
+ALWAYS pass --no-launcher: by default every start (re)installs an app-menu / Start Menu entry
+(launcher.py, config.launcher). Dashboard: http://127.0.0.1:17564/ (config.py); OAuth redirect
+is http://localhost:17563 (dashboard.py). Wallet and tokens live in ~/.config/x4-twitch-bridge/,
+never in the repo (SECURITY.md).
+Tests: `cd bridge && for t in tools/test_*.py; do python3 $t || echo FAIL $t; done`.
+test_lua_decode.py and test_twitch_api.py print SKIP and EXIT 0 when lupa / twitchAPI are
+missing (they are, under WSL): green there proves nothing. test_x4link_win.py fails off
+Windows (no create_pipe_connection) — expected.
+The working tree under WSL has CRLF shell scripts (git keeps them LF; no .gitattributes):
+`bash tools/smoke_test.sh` dies on `$'\\r'`. From bridge/, run
+`bash -c "$(tr -d '\\r' < tools/smoke_test.sh)" tools/smoke_test.sh` (the last word keeps its
+`cd $(dirname $0)/..` right; 7 PASS lines). Never commit a line-ending-only change.
+"""
+
+[tags.economy]
+label = "Economy & catalog"
+description = "What viewers can buy and what it costs: catalog.py (the store = the roadmap), economy.py (chat commands, COMMAND_ALIASES), commands.py (roles, cooldowns), wallet.py (coins, karma), fleet.py (adopted ships), ships.py/sectors.py and their generated .json; docs/08, docs/10, docs/catalog/"
+color = "#f0b429"
+sort = 20
+context = """
+catalog.py is the single source of truth: the `!buy` engine, the dashboard /catalog page and
+the static docs/catalog/ export all read CATALOG. Each StoreEvent has a `status` (live, wip,
+planned, suggested) and a kind (info = answered bridge-side, effect = a cue in the MD).
+`python3 bridge/tools/test_md_sync.py` FAILS when a `live` effect has no TODO-free MD cue, when
+an implemented cue is not marked live, or when buy_key + nicknames != COMMAND_ALIASES[id] in
+economy.py. So a new command touches catalog.py, economy.py's COMMAND_ALIASES and the MD cue
+in one commit. FACTION_KEYS in catalog.py is copied TWICE in the MD ($keys + $factions, same
+order); test_md_sync checks both copies.
+After a catalog change, re-export: `python3 bridge/tools/export_catalog.py` (writes
+docs/catalog/catalog.json).
+ships.json and sectors.json are GENERATED from the X4 install (gen_ships.py, gen_sectors.py, see
+the `world` pack): never edit them by hand. Prices: adopt = credits/1200, buy = /300, resurrect =
+adopt x 1.5 (fleet.py, docs/10).
+Adoptions are the bridge's truth (adoptions.json); MD is stateless about them (docs/10 §2).
+Ship NAMES never cross the wire, only engine tokens (idcode, macro): docs/10 §3.
+Tests: test_catalog, test_commands, test_economy, test_wallet, test_fleet, test_ships,
+test_sectors, test_md_sync (all stdlib, all run under WSL).
+"""
+
+[tags.mod]
+label = "In-game mod (MD + Lua)"
+description = "extensions/twitch_integration/: md/twitch_integration.xml (the pipe loop, dispatch cues, every in-game effect), ui/twitch_integration.lua (JSON decode -> AddUITriggeredEvent), ui.xml, content.xml, t/ text; md/twitch_boso_lines.xml is generated"
+color = "#00b5ad"
+sort = 30
+context = """
+READ .claude/skills/x4-modding/SKILL.md FIRST: its MD traps each cost a debugging round, and
+none of them errors at load. The ones that bite most often:
+- `$x?` means DEFINED, not non-null; compare `== null`.
+- Only strings cross Lua -> MD, and MD cannot split a string or parse a number: one value per
+  payload, or put the second in the screen/control slot (SKILL.md, "Getting TWO values").
+- signal_cue takes neither param nor delay. Twitch_RankWatch still re-arms with
+  `signal_cue ... param="$metrics"`, which is silently dropped.
+- A cue under an instantiate="true" cue MUST have an event condition, or X4 drops it at load.
+  md.xsd does not catch this; `python3 bridge/tools/test_md_sync.py` does.
+- `--` inside an XML comment makes the whole file unparseable: draw rules with `=`.
+BUILD STAMP: bump `$Build` in Twitch_Say on EVERY edit of twitch_integration.xml. It is the
+only way to tell a stale script from a broken fix in chat.
+Checks: `python3 -c "import xml.etree.ElementTree as E; E.parse('extensions/twitch_integration/md/twitch_integration.xml')"`,
+then test_md_sync.py, then the md.xsd validation in SKILL.md (needs lxml, which WSL's python3
+does not have; Windows `py` (inferred)).
+The MD file name must stay lowercase (DEVLOG, live bug 5). content.xml depends on
+ws_2042901274 (SirNukes Mod Support APIs), not on a folder name.
+X4 is a Windows game on this machine (<X4> on drive E, reachable under WSL at /mnt/e/…). An agent
+cannot run it: it needs Simon's GPU, screen and a loaded save. MD/Lua changes take effect on
+loading a save, after `deploy.ps1` copies them in. Never deploy, launch X4 or touch the save
+folder unless the ticket asks; say what Simon must load and what chat should show.
+"""
+
+[tags.world]
+label = "World & game data"
+description = "What the mod adds to the universe: extensions/twitch_arena/ (gamestarts, god.xml, maps/, the main-galaxy diff), the faction libraries (twitch_integration/libraries/: factions, characters, jobs, wares), and the generators/audits that read the X4 install (bridge/tools/gen_*.py, check_macros.py, .claude/skills/x4-modding/extract_x4.py)"
+color = "#e8590c"
+sort = 40
+context = """
+Golden rule (x4-modding SKILL.md): extract the vanilla file and mirror it exactly; a wrong case
+in a diff `sel` or a wrong `../` depth fails silently or crashes new-game generation at ~90%.
+Extract under WSL: `X4_DIR="/mnt/e/steam/steamapps/common/X4 Foundations" python3
+.claude/skills/x4-modding/extract_x4.py --list <name>` (its default is the Windows path E:\\…).
+Out to `_scratch/` (untracked).
+Survey BASE GAME + extensions/ego_dlc_* ONLY: <X4>/extensions holds third-party mods too
+(faction_fix_pack among them). After touching any macro reference:
+`python3 bridge/tools/check_macros.py "/mnt/e/steam/steamapps/common/X4 Foundations"` (6 s).
+twitch_arena is save="true": a gamestart, map or god.xml change needs a NEW game.
+twitch_integration is save="0" and can be added to an existing save (extension READMEs);
+its factions.xml and the stations its MD builds still live in that save.
+A custom faction needs five things or its station builds and then does nothing:
+.claude/skills/x4-modding/references/custom-factions.md (people, staffing, goods, licences,
+logistics).
+Generated, never hand-edited, re-run after a DLC or game update: gen_characters.py ->
+libraries/characters.xml, gen_ware_owners.py -> libraries/wares.xml, gen_ships.py / gen_sectors.py
+-> bridge/twitch_bridge/*.json, gen_boso_lines.py -> md/twitch_boso_lines.xml.
+deploy.ps1 mirrors BOTH extensions into <X4>/extensions; install.sh is Linux-only and never
+deployed twitch_arena. Same rule as `mod`: no deploy, no X4 launch unless the ticket asks.
+"""
+
+[tags.docs]
+label = "README & docs"
+description = "README.md, SECURITY.md, docs/00-10 + DEVLOG.md + references.md, the extension READMEs, .claude/skills/x4-modding/, .atelier/packs.toml"
+color = "#9fa8ff"
+sort = 100
+context = """
+README.md is user-facing (install, Twitch app setup, registries); its "Reference bank" table
+lists docs/00-10 in reading order: a new docs/NN file adds its row there in the same commit.
+.claude/skills/x4-modding/SKILL.md is the agent guide (MD traps, deploy, validation) with
+references/custom-factions.md; a trap learned the hard way goes there, naming the file and the
+check that catches it. docs/DEVLOG.md is the dated engineering log, newest on top.
+PUBLIC REPO: before every commit run SECURITY.md §4's two greps on `git diff --cached`. Write
+<X4>, <SAVE>, <id> and <HOME>, never a real path or the numeric user-id.
+docs/img/*.png come from `python bridge/tools/make_screenshots.py` (needs Playwright).
+.atelier/packs.toml (this file) is fixed in the same commit that makes a pack wrong.
+"""
