@@ -26,7 +26,7 @@ Transport is per OS (x4link/): on Linux X4 HOSTS `<SAVE>/twitch.xml` and the bri
 on Windows the bridge HOSTS `\\\\.\\pipe\\twitch` and X4 connects. PIPE_NAME in config.py must
 match the MD pipe name "twitch".
 Run it without Twitch or X4: `cd bridge && python3 -m twitch_bridge --source stdin --no-launcher
---socket /tmp/x.sock`, with `python3 tools/mock_x4.py --socket /tmp/x.sock` as the game.
+--socket /tmp/x.sock`, with `python3 bridge/tools/mock_x4.py --socket /tmp/x.sock` as the game.
 ALWAYS pass --no-launcher: by default every start (re)installs an app-menu / Start Menu entry
 (launcher.py, config.launcher). Dashboard: http://127.0.0.1:17564/ (config.py); OAuth redirect
 is http://localhost:17563 (dashboard.py). Wallet and tokens live in ~/.config/x4-twitch-bridge/,
@@ -36,9 +36,9 @@ test_lua_decode.py and test_twitch_api.py print SKIP and EXIT 0 when lupa / twit
 missing (they are, under WSL): green there proves nothing. test_x4link_win.py fails off
 Windows (no create_pipe_connection) — expected.
 The working tree under WSL has CRLF shell scripts (git keeps them LF; no .gitattributes):
-`bash tools/smoke_test.sh` dies on `$'\\r'`. From bridge/, run
-`bash -c "$(tr -d '\\r' < tools/smoke_test.sh)" tools/smoke_test.sh` (the last word keeps its
-`cd $(dirname $0)/..` right; 7 PASS lines). Never commit a line-ending-only change.
+`bash bridge/tools/smoke_test.sh` dies on `$'\\r'`. From the root, run
+`bash -c "$(tr -d '\\r' < bridge/tools/smoke_test.sh)" bridge/tools/smoke_test.sh` (the last
+word keeps its `cd $(dirname $0)/..` right; 7 PASS lines). Never commit a line-ending-only change.
 """
 
 [tags.economy]
