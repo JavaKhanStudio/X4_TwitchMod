@@ -80,7 +80,9 @@ description = "extensions/twitch_integration/: md/twitch_integration.xml (the pi
 color = "#00b5ad"
 sort = 30
 context = """
-READ .claude/skills/x4-modding/SKILL.md FIRST: its MD traps each cost a debugging round, and
+READ ../X4_Mods/.claude/skills/x4-modding/SKILL.md FIRST, the X4 guide every board shares
+since x4 r5 (this repo's .claude/skills/x4-modding/SKILL.md adds deploy and the registries):
+its MD traps each cost a debugging round, and
 none of them errors at load. The ones that bite most often:
 - `$x?` means DEFINED, not non-null; compare `== null`.
 - Only strings cross Lua -> MD, and MD cannot split a string or parse a number: one value per
@@ -132,7 +134,7 @@ twitch_arena is save="true": a gamestart, map or god.xml change needs a NEW game
 twitch_integration is save="0" and can be added to an existing save (extension READMEs);
 its factions.xml and the stations its MD builds still live in that save.
 A custom faction needs five things or its station builds and then does nothing:
-.claude/skills/x4-modding/references/custom-factions.md (people, staffing, goods, licences,
+../X4_Mods/.claude/skills/x4-modding/references/custom-factions.md (people, staffing, goods, licences,
 logistics).
 Generated, never hand-edited, re-run after a DLC or game update: gen_characters.py ->
 libraries/characters.xml, gen_ware_owners.py -> libraries/wares.xml, gen_ships.py / gen_sectors.py
@@ -170,9 +172,10 @@ sort = 100
 context = """
 README.md is user-facing (install, Twitch app setup, registries); its "Reference bank" table
 lists docs/00-10 in reading order: a new docs/NN file adds its row there in the same commit.
-.claude/skills/x4-modding/SKILL.md is the agent guide (MD traps, deploy, validation) with
-references/custom-factions.md; a trap learned the hard way goes there, naming the file and the
-check that catches it. docs/DEVLOG.md is the dated engineering log, newest on top.
+The agent guide is SHARED since x4 r5: ../X4_Mods/.claude/skills/x4-modding/SKILL.md (MD
+traps, validation, mechanisms) with references/custom-factions.md; a trap learned the hard way
+goes there, committed in X4_Mods, naming the file and the check that catches it. This repo's
+.claude/skills/x4-modding/SKILL.md keeps only deploy.ps1, $Build and the registries. docs/DEVLOG.md is the dated engineering log, newest on top.
 PUBLIC REPO: before every commit run SECURITY.md §4's two greps on `git diff --cached`. Write
 <X4>, <SAVE>, <id> and <HOME>, never a real path or the numeric user-id.
 docs/img/*.png come from `python bridge/tools/make_screenshots.py` (needs Playwright).
