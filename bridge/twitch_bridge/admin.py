@@ -7,6 +7,8 @@ loop's own reads. One method per action, looked up in ACTIONS.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 # What an action needs before it can run. Checked in this order, so an action
 # that needs a target also answers "economy is off" when there is no wallet.
 FREE, ECONOMY, TARGET = "free", "economy", "target"
@@ -121,7 +123,7 @@ class Admin:
         self.status.note(f"admin: {'blocked' if v.banned else 'unblocked'} {target}")
         return {"ok": True, "user": target, "banned": v.banned}
 
-    ACTIONS = {
+    ACTIONS: ClassVar[dict[str, tuple]] = {
         "stationowner": (_stationowner, FREE),
         "crisis": (_crisis, FREE),
         "cooldowns": (_switch, FREE),

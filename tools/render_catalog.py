@@ -56,7 +56,7 @@ def shoot(base, w, h, png):
                             f"--user-data-dir={winpath(profile)}",
                             f"--window-size={max(w, 500)},{h}", "--virtual-time-budget=3000",
                             f"--screenshot={winpath(png)}", f"{base}/__frame/{w}/{h}"],
-                           timeout=60, capture_output=True)
+                           timeout=60, capture_output=True, check=False)
         if png.exists():
             return True
         time.sleep(1.5)

@@ -96,10 +96,10 @@ o = econ.handle_chat(chat("bo", "!buy adopt abc-123"))
 check(kinds(o) == ["cmd", "say"], "ID code matching is case-insensitive")
 
 # ---- !fleet size filter ---------------------------------------------------
-mix = ";".join(["SSS-001|ship_zzz_s_hull_01_a_macro|S",
-                "SSS-002|ship_zzz_s_hull_01_a_macro|S",
-                "MMM-001|ship_zzz_m_hull_01_a_macro|M",
-                "XXX-001|ship_zzz_xl_hull_01_a_macro|XL"])
+mix = ("SSS-001|ship_zzz_s_hull_01_a_macro|S;"
+       "SSS-002|ship_zzz_s_hull_01_a_macro|S;"
+       "MMM-001|ship_zzz_m_hull_01_a_macro|M;"
+       "XXX-001|ship_zzz_xl_hull_01_a_macro|XL")
 fl.update(protocol.fleet(mix, total=4, sent=4))
 
 o = econ.handle_chat(chat("ana", "!fleet XL"))

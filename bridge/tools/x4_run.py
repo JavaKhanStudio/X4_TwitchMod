@@ -52,13 +52,14 @@ def say(msg: str) -> None:
 
 def running(image: str) -> bool:
     out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {image}", "/NH"],
-                         capture_output=True, text=True).stdout
+                         capture_output=True, text=True, check=False).stdout
     return image.lower() in out.lower()
 
 
 def away_until() -> datetime | None:
     try:
-        return datetime.fromisoformat(AWAY.read_text(encoding="utf-8").strip())
+        # .astimezone() reads a mark written before it carried an offset as local time.
+        return datetime.fromisoformat(AWAY.read_text(encoding="utf-8").strip()).astimezone()
     except (OSError, ValueError):
         return None
 
@@ -69,7 +70,7 @@ def gate() -> list[str]:
     until = away_until()
     if until is None:
         why.append(f"Simon is not marked away (no {AWAY}; he runs tools/x4-away.cmd)")
-    elif until < datetime.now():
+    elif until < datetime.now().astimezone():
         why.append(f"Simon's away mark expired at {until:%Y-%m-%d %H:%M}")
     if running("X4.exe"):
         why.append("X4.exe is already running (Simon playing, or a leaked run)")
@@ -95,7 +96,8 @@ def profile_dir() -> Path:
 
 def kill_x4() -> None:
     if running("X4.exe"):
-        subprocess.run(["taskkill", "/IM", "X4.exe", "/F", "/T"], capture_output=True)
+        subprocess.run(["taskkill", "/IM", "X4.exe", "/F", "/T"], capture_output=True,
+                       check=False)
         say("X4 killed")
 
 
@@ -155,7 +157,7 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.cmd == "away":
-        until = datetime.now() + timedelta(hours=args.hours)
+        until = datetime.now().astimezone() + timedelta(hours=args.hours)
         AWAY.write_text(until.isoformat(timespec="minutes"), encoding="utf-8")
         say(f"agents may run X4 until {until:%Y-%m-%d %H:%M}")
         return 0

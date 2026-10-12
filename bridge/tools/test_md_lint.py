@@ -77,7 +77,7 @@ def param_never_sent(roots: dict[str, ET.Element]) -> list[str]:
 def head_text(path: Path) -> str | None:
     rel = path.relative_to(REPO).as_posix()
     p = subprocess.run(["git", "-C", str(REPO), "show", f"HEAD:{rel}"],
-                       capture_output=True, text=True, encoding="utf-8")
+                       capture_output=True, text=True, encoding="utf-8", check=False)
     return p.stdout if p.returncode == 0 else None
 
 
