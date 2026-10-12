@@ -148,6 +148,8 @@ ends, and x4_run.py's machine lock (every board, every checkout) refuses a secon
 the holder. Launch ONLY through `py.exe bridge/tools/x4_run.py run [--expect REGEX]`: it
 refuses unless Simon has marked himself away (tools/x4-away.cmd), deploys, starts X4
 minimized and silent, waits for the line in <PROFILE>/agent_x4.txt, and always kills X4.
+A sibling checkout deploys its own extension under the same lock with `--deploy-extra DIR`
+(repeatable; `--dry-run` lists the copy without lock, gate or launch).
 Run `x4_run.py status` first. When it says NO (Simon not away, X4 running, Steam off), do not
 loop: note "retry when Simon is marked away" and `atelier release` the ticket, or hand back
 the recipe (the save to load, the chat command, the line chat or x4debug.txt must show).

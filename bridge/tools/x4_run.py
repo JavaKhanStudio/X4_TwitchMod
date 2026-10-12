@@ -8,8 +8,16 @@ from WSL, `py.exe bridge/tools/x4_run.py ...`.
   away [HOURS]    Simon: "agents may run X4 for the next HOURS" (default 2).
   back            Simon: clear it now.
   status          what the gate says, and why.
-  run [--expect REGEX] [--timeout S] [--no-deploy]
-                  gate -> deploy.ps1 -> launch -> wait for REGEX in the log -> kill.
+  run [--expect REGEX] [--timeout S] [--no-deploy] [--deploy-extra DIR]... [--dry-run]
+                  gate -> deploy.ps1 -> extras -> launch -> wait for REGEX in the log -> kill.
+
+--deploy-extra DIR (repeatable) mirrors another checkout's extension folder into
+<X4>/extensions/<DIR's name> after deploy.ps1, inside the lock, so a sibling board
+(X4_Questline: --deploy-extra extensions/x4_questline from its root) deploys its own
+without racing another run. DIR is relative to the current directory and must hold a
+content.xml. --no-deploy skips deploy.ps1 only; the extras are still mirrored.
+--dry-run takes no lock, checks no gate and launches nothing: it prints what would
+be deployed and lists what robocopy would copy (/L).
 
 tools/x4-away.cmd wraps away/back for a double-click.
 
@@ -152,19 +160,62 @@ def launch(x4: Path) -> subprocess.Popen:
     return subprocess.Popen([str(x4 / "X4.exe"), *FLAGS], cwd=str(x4), startupinfo=si)
 
 
+# deploy.ps1 mirrors these with its own rules (twitch_integration keeps companion/).
+OWN_EXTENSIONS = {"twitch_integration", "twitch_arena"}
+
+
+def extras(dirs: list[str]) -> list[Path]:
+    """The --deploy-extra folders, resolved; exits naming the first bad one."""
+    out = []
+    for d in dirs:
+        src = Path(d).resolve()
+        if not (src / "content.xml").is_file():
+            sys.exit(f"[x4_run] --deploy-extra {d}: no content.xml in {src}, not an extension")
+        if src.name in OWN_EXTENSIONS:
+            sys.exit(f"[x4_run] --deploy-extra {d}: deploy.ps1 already deploys {src.name}")
+        out.append(src)
+    return out
+
+
+def mirror(src: Path, x4: Path, dry: bool = False) -> None:
+    """robocopy /MIR src into <X4>/extensions/<name>; /L only lists when dry."""
+    dst = x4 / "extensions" / src.name
+    cmd = ["robocopy", str(src), str(dst), "/MIR", "/NDL", "/NJH", "/NP", "/R:1", "/W:1"]
+    cmd.append("/L" if dry else "/NFL")
+    rc = subprocess.run(cmd, capture_output=True, text=True, encoding="oem", errors="replace",
+                        check=False)
+    if dry:
+        print(rc.stdout, end="")
+    if rc.returncode >= 8:
+        sys.exit(f"[x4_run] robocopy failed for {src.name} (code {rc.returncode})")
+    say(f"{'would deploy' if dry else 'deployed'} {src} -> {dst} (robocopy code {rc.returncode})")
+
+
+def dry_run(args) -> int:
+    x4, extra = x4_dir(), extras(args.deploy_extra)
+    say("DRY RUN: no lock, no gate, no launch")
+    say("would run deploy.ps1" if not args.no_deploy else "would skip deploy.ps1 (--no-deploy)")
+    for src in extra:
+        mirror(src, x4, dry=True)
+    return 0
+
+
 def cmd_run(args) -> int:
+    if args.dry_run:
+        return dry_run(args)
+    extra = extras(args.deploy_extra)   # a bad folder fails before the lock
     lock = take_lock()
     if lock is None:
         say(f"REFUSED: another agent run holds X4: {holder()}")
         return 2
     try:
-        return run_locked(args)
+        return run_locked(args, extra)
     finally:
         WHO.unlink(missing_ok=True)
         lock.close()
 
 
-def run_locked(args) -> int:
+def run_locked(args, extra: list[Path]) -> int:
     why = gate(locked=True)
     if why:
         for w in why:
@@ -176,6 +227,8 @@ def run_locked(args) -> int:
         say("deploy.ps1 ...")
         subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
                         "-File", str(REPO / "deploy.ps1")], check=True)
+    for src in extra:
+        mirror(src, x4)
     log.unlink(missing_ok=True)
     expect = re.compile(args.expect, re.IGNORECASE)
     t0 = time.monotonic()
@@ -209,7 +262,11 @@ def main() -> int:
     r = sub.add_parser("run")
     r.add_argument("--expect", default=DEFAULT_EXPECT)
     r.add_argument("--timeout", type=int, default=300)
-    r.add_argument("--no-deploy", action="store_true")
+    r.add_argument("--no-deploy", action="store_true", help="skip deploy.ps1 (extras still go)")
+    r.add_argument("--deploy-extra", action="append", default=[], metavar="DIR",
+                   help="also mirror this extension folder into <X4>/extensions (repeatable)")
+    r.add_argument("--dry-run", action="store_true",
+                   help="print what would be deployed; no lock, gate or launch")
     args = ap.parse_args()
 
     if args.cmd == "away":
