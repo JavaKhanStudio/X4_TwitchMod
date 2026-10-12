@@ -81,6 +81,10 @@ def _connect_from_dashboard(body: dict, source, loop) -> None:
 
 
 def _open_browser(url: str) -> None:
+    from .launcher import board_agent
+    if board_agent():
+        log.info("not opening a browser: run by board agent %s", board_agent())
+        return
     try:
         webbrowser.open(url)
     except (webbrowser.Error, OSError) as e:  # never let opening a browser kill the companion

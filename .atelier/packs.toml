@@ -29,7 +29,9 @@ match the MD pipe name "twitch".
 Run it without Twitch or X4: `cd bridge && python3 -m twitch_bridge --source stdin --no-launcher
 --socket /tmp/x.sock`, with `python3 bridge/tools/mock_x4.py --socket /tmp/x.sock` as the game.
 ALWAYS pass --no-launcher: by default every start (re)installs an app-menu / Start Menu entry
-(launcher.py, config.launcher). Dashboard: http://127.0.0.1:17564/ (config.py); OAuth redirect
+(launcher.py, config.launcher). Under a board agent (ATELIER_AGENT set) the launcher and --open
+are off whatever the flags say (launcher.board_agent, r2; tools/test_board_agent_quiet.py) —
+the flag still matters for a run Simon starts. Dashboard: http://127.0.0.1:17564/ (config.py); OAuth redirect
 is http://localhost:17563 (dashboard.py). Wallet and tokens live in ~/.config/x4-twitch-bridge/,
 never in the repo (SECURITY.md).
 Tests: `cd bridge && for t in tools/test_*.py; do case $t in *lua_decode*|*twitch_api*) py=py.exe;;
@@ -98,7 +100,8 @@ X4 is a Windows game on this machine (<X4> on drive E, reachable under WSL at /m
 needs Simon's GPU and screen. MD/Lua changes take effect on loading a save, after `deploy.ps1`
 copies them in. An agent launches X4 ONLY through `py.exe bridge/tools/x4_run.py run`. It
 refuses unless Simon has marked himself away with tools/x4-away.cmd (r24); `x4_run.py status`
-says GO or why not. X4 is ONE resource for the machine (every board shares it, r2): `run`
+says GO or why not. A ticket that must run X4 carries #ingame (read its pack). X4 is ONE
+resource for the machine (every board shares it, r2): `run`
 holds a machine lock from deploy to kill, and a second run is refused at once naming the holder
 — do not retry in a loop; say so and release. The harness always kills X4 at the end. Never
 launch X4 any other way, and never run deploy.ps1 by hand while a run holds X4,
@@ -131,6 +134,23 @@ libraries/characters.xml, gen_ware_owners.py -> libraries/wares.xml, gen_ships.p
 -> bridge/twitch_bridge/*.json, gen_boso_lines.py -> md/twitch_boso_lines.xml.
 deploy.ps1 mirrors BOTH extensions into <X4>/extensions; install.sh is Linux-only and never
 deployed twitch_arena. Same rule as `mod`: no deploy, no X4 launch unless the ticket asks.
+"""
+
+[tags.ingame]
+label = "Runs X4"
+description = "The ticket must LAUNCH X4 to be proved (py.exe bridge/tools/x4_run.py run). Add it alongside #mod/#world only when the game itself has to run, never for an MD edit that a recipe can hand back."
+color = "#e03131"
+sort = 35
+context = """
+X4 is ONE resource for the machine (r2): the board leases @x4 to the session holding an
+#ingame ticket ([resources.x4] in the board file), so a second one is not served until it
+ends, and x4_run.py's machine lock (every board, every checkout) refuses a second run naming
+the holder. Launch ONLY through `py.exe bridge/tools/x4_run.py run [--expect REGEX]`: it
+refuses unless Simon has marked himself away (tools/x4-away.cmd), deploys, starts X4
+minimized and silent, waits for the line in <PROFILE>/agent_x4.txt, and always kills X4.
+Run `x4_run.py status` first. When it says NO (Simon not away, X4 running, Steam off), do not
+loop: note "retry when Simon is marked away" and `atelier release` the ticket, or hand back
+the recipe (the save to load, the chat command, the line chat or x4debug.txt must show).
 """
 
 [tags.docs]

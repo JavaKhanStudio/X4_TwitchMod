@@ -88,8 +88,19 @@ def _write_shortcut(script: Path, dest: Path) -> bool:
         return False
 
 
+def board_agent() -> str:
+    """The Atelier board agent running this process, '' for a person (board r2).
+
+    A board agent must never put anything on Simon's machine — a menu entry, a
+    browser tab — whatever flags it forgot, so the launcher and --open check this
+    at the point they act."""
+    return os.environ.get("ATELIER_AGENT", "")
+
+
 def ensure_launcher() -> Path | None:
     """Create/refresh the launcher if needed. Returns its path, or None if skipped."""
+    if board_agent():
+        return None
     script = companion_script()
     if script is None:
         return None
