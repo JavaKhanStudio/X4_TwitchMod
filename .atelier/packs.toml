@@ -101,8 +101,9 @@ The MD file name must stay lowercase (DEVLOG, live bug 5). content.xml depends o
 ws_2042901274 (SirNukes Mod Support APIs), not on a folder name.
 X4 is a Windows game on this machine (<X4> on drive E, reachable under WSL at /mnt/e/…). It
 needs Simon's GPU and screen. MD/Lua changes take effect on loading a save, after `deploy.ps1`
-copies them in. An agent launches X4 ONLY through `py.exe bridge/tools/x4_run.py run`. It
-refuses unless Simon has marked himself away with tools/x4-away.cmd (r24); `x4_run.py status`
+copies them in. An agent launches X4 ONLY through `py.exe bridge/tools/x4_run.py run`, a shim
+since x4 r2: the runner's code is ../X4_Mods/tools/x4_run.py (shared by every X4 board, its
+tests beside it); fix it THERE, the shim only adds this repo's deploy.ps1. It refuses unless Simon has marked himself away with tools/x4-away.cmd (r24); `x4_run.py status`
 says GO or why not. A ticket that must run X4 carries #ingame (read its pack). X4 is ONE
 resource for the machine (every board shares it, r2): `run`
 holds a machine lock from deploy to kill, and a second run is refused at once naming the holder
@@ -153,6 +154,8 @@ refuses unless Simon has marked himself away (tools/x4-away.cmd), deploys, start
 minimized and silent, waits for the line in <PROFILE>/agent_x4.txt, and always kills X4.
 A sibling checkout deploys its own extension under the same lock with `--deploy-extra DIR`
 (repeatable; `--dry-run` lists the copy without lock, gate or launch).
+This path is a shim (x4 r2) over ../X4_Mods/tools/x4_run.py, which holds the code and runs
+no deploy.ps1 of its own: call this one when the Twitch mod must be in the game too.
 Run `x4_run.py status` first. When it says NO (Simon not away, X4 running, Steam off), do not
 loop: note "retry when Simon is marked away" and `atelier release` the ticket, or hand back
 the recipe (the save to load, the chat command, the line chat or x4debug.txt must show).
