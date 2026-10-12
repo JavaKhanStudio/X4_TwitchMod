@@ -40,12 +40,9 @@ from __future__ import annotations
 
 import re
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from gen_ships import all_cats, cat_entries, extract  # noqa: E402
+from x4cat import all_cats, cat_entries, elements, install_root
 
 PAGE = "10201"                       # Boso Ta's voice/text page
 MIN_ID = 99901                       # first spoken line; below this is UI text
@@ -89,34 +86,45 @@ FOOTER = """        <set_value name="$pool" exact="[{chunknames}]"/>
 """
 
 
-def collect(root: Path) -> list[tuple[str, str]]:
-    cats = all_cats(root)
-
-    # Every id that actually has audio. Read the cat INDEXES only — the .dat blobs
-    # are gigabytes and we only need the file names.
+def voiced_ids(root: Path) -> set[str]:
+    """Every id that actually has audio. Reads the cat INDEXES only — the .dat blobs
+    are gigabytes and we only need the file names."""
     have: set[str] = set()
-    for cat in cats:
+    for cat in all_cats(root):
         for path, _off, _size in cat_entries(cat):
             if path.startswith(VOICE_DIR) and path.endswith(".ogg"):
                 have.add(path[len(VOICE_DIR):-4])
+    return have
 
-    # The English TextDB. Later archives patch earlier ones, so merge in order.
+
+def page_entries(root: Path) -> dict[str, str]:
+    """The English TextDB's PAGE, id -> text. Later archives patch earlier ones, so
+    merge in order."""
     entries: dict[str, str] = {}
-    for cat in cats:
-        blob = extract(cat, "t/0001-l044.xml")
-        if not blob:
+    for _cat, pg in elements(root, "t/0001-l044.xml", "page"):
+        if pg.get("id") != PAGE:
             continue
-        try:
-            xml = ET.fromstring(blob)
-        except ET.ParseError:
-            continue
-        for pg in xml.iter("page"):
-            if pg.get("id") != PAGE:
-                continue
-            for t in pg.iter("t"):
-                if t.get("id"):
-                    entries[t.get("id")] = (t.text or "").strip()
+        for t in pg.iter("t"):
+            if t.get("id"):
+                entries[t.get("id")] = (t.text or "").strip()
+    return entries
 
+
+def spoken(txt: str) -> str | None:
+    """The subtitle `txt` shows as, or None if it fails a FILTER (module docstring)."""
+    if txt.startswith("(*") or "{" in txt or "$" in txt or "\\n" in txt:
+        return None
+    # A leading "(annoyed)" direction is stripped by the game; anything later in
+    # the string is not, and would be drawn in the subtitle.
+    body = re.sub(r"^(\([^)]*\))+", "", txt).strip()
+    if not body or len(body) > MAX_LEN or "(" in body or ")" in body:
+        return None
+    return body
+
+
+def collect(root: Path) -> list[tuple[str, str]]:
+    have = voiced_ids(root)
+    entries = page_entries(root)
     if not have or not entries:
         raise SystemExit(f"no data found under {root} "
                          f"(voice files: {len(have)}, page {PAGE} entries: {len(entries)})")
@@ -125,22 +133,18 @@ def collect(root: Path) -> list[tuple[str, str]]:
     for tid, txt in entries.items():
         if not tid.isdigit() or int(tid) < MIN_ID or tid not in have:
             continue
-        if txt.startswith("(*") or "{" in txt or "$" in txt or "\\n" in txt:
-            continue
-        # A leading "(annoyed)" direction is stripped by the game; anything later in
-        # the string is not, and would be drawn in the subtitle.
-        body = re.sub(r"^(\([^)]*\))+", "", txt).strip()
-        if not body or len(body) > MAX_LEN or "(" in body or ")" in body:
-            continue
-        kept.append((tid, body))
+        body = spoken(txt)
+        if body:
+            kept.append((tid, body))
 
     kept.sort(key=lambda r: int(r[0]))
     return kept
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1
-                else r"E:\steam\steamapps\common\X4 Foundations")
+    root = install_root()
+    if root is None:
+        return 1
     lines = collect(root)
 
     size = -(-len(lines) // CHUNKS)          # ceil, so the last chunk is the short one

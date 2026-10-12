@@ -9,9 +9,8 @@ It reads each cat/dat pair (base + every installed DLC), pulls `libraries/wares.
 one row per player-buyable ship: {key, macro, label, credits, size, role}. Re-run
 after installing a DLC to pick up its ships. `ships.py` loads the result at runtime.
 
-The X4 cat format is text: '<path with spaces> <size> <timestamp> <hash>' per line;
-the dat is those files concatenated in listing order. We compute each file's offset
-from the running size sum and slice it out of the dat.
+Reading the cat/dat archives is x4cat.py's job; `all_cats`, `cat_entries` and
+`extract` are re-exported here for the tools that import them from this file.
 """
 from __future__ import annotations
 
@@ -20,6 +19,8 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+from x4cat import all_cats, cat_entries, extract, install_root  # noqa: F401
 
 # ships we never offer: pure-enemy (Xenon/Kha'ak, price 0), drones, and research hulls.
 SKIP_MACRO = re.compile(r"_(xen|kha)_|transdrone|_drone_|_research_|_lasertower|_spacesuit")
@@ -32,41 +33,6 @@ ROLE_TOKENS = ["scout", "fighter", "heavyfighter", "corvette", "frigate", "gunbo
 COMBAT_ROLES = {"scout", "fighter", "heavy fighter", "corvette", "frigate",
                 "gunboat", "destroyer", "carrier", "battleship"}
 SIZE_RE = re.compile(r"_(xs|s|m|l|xl)_")
-
-
-def cat_entries(cat: Path):
-    """Yield (relpath_lower, offset, size) for a .cat, honoring space-containing paths."""
-    offset = 0
-    for line in cat.read_text(encoding="utf-8", errors="replace").splitlines():
-        parts = line.split(" ")
-        if len(parts) < 4:
-            continue
-        try:
-            size = int(parts[-3])
-        except ValueError:
-            continue
-        path = " ".join(parts[:-3]).lower()
-        yield path, offset, size
-        offset += size
-
-
-def extract(cat: Path, want: str) -> bytes | None:
-    dat = cat.with_suffix(".dat")
-    if not dat.exists():
-        return None
-    for path, off, size in cat_entries(cat):
-        if path == want:
-            with open(dat, "rb") as f:
-                f.seek(off)
-                return f.read(size)
-    return None
-
-
-def all_cats(root: Path) -> list[Path]:
-    cats = sorted((c for c in root.glob("*.cat") if "_sig" not in c.name))
-    for ext in sorted(root.glob("extensions/*")):
-        cats += sorted(c for c in ext.glob("*.cat") if "_sig" not in c.name)
-    return cats
 
 
 def size_of(macro: str) -> str:
@@ -125,13 +91,11 @@ def parse_ships(wares_xml: bytes) -> list[dict]:
     return ships
 
 
-def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else r"E:\Steam\steamapps\common\X4 Foundations")
-    if not root.exists():
-        print(f"X4 install not found: {root}"); return 1
-
-    ships: dict[str, dict] = {}          # macro -> ship data (later cats override)
-    text: dict[tuple[str, str], str] = {}  # (page,id) -> raw text (for name resolution)
+def load(root: Path) -> tuple[dict[str, dict], dict[tuple[str, str], str]]:
+    """Every ship ware by macro (later cats override) and the English text by
+    (page, id), for name resolution."""
+    ships: dict[str, dict] = {}
+    text: dict[tuple[str, str], str] = {}
     for cat in all_cats(root):
         w = extract(cat, "libraries/wares.xml")
         if w:
@@ -141,29 +105,45 @@ def main() -> int:
         t = extract(cat, "t/0001-l044.xml")
         if t:
             merge_text(t, text)
+    return ships, text
 
+
+def ship_row(macro: str, s: dict, text: dict) -> dict | None:
+    """The registry row for one ship ware, or None if it is not a buyable warship."""
+    if not macro or SKIP_MACRO.search(macro) or s["credits"] <= 0:
+        return None
+    if "noplayerbuild" in s["tags"] or "blueprintsaleonly" in s["tags"]:
+        return None
+    role = role_of(macro)
+    if role not in COMBAT_ROLES:
+        return None
+    full = resolve(s["name_page"], s["name_id"], text)       # e.g. "Nemesis Vanguard"
+    base = full.split(" ")[0] if full else ""                # the ship name: "Nemesis"
+    if not base or not re.fullmatch(r"[A-Za-z][A-Za-z0-9'\-]*", base):
+        return None   # skip anything that didn't resolve to a clean word
+    return {"key": base.lower(), "label": base, "macro": macro,
+            "credits": s["credits"], "size": size_of(macro), "role": role}
+
+
+def buyable(ships: dict[str, dict], text: dict) -> list[dict]:
     # dedupe by NAME: X4 has many variants per ship (Vanguard/Sentinel/…) sharing one
     # ware name; offer each named warship ONCE, keeping the cheapest (base) variant.
     by_label: dict[str, dict] = {}
     for macro, s in ships.items():
-        if not macro or SKIP_MACRO.search(macro) or s["credits"] <= 0:
+        row = ship_row(macro, s, text)
+        if row is None:
             continue
-        if "noplayerbuild" in s["tags"] or "blueprintsaleonly" in s["tags"]:
-            continue
-        role = role_of(macro)
-        if role not in COMBAT_ROLES:
-            continue
-        full = resolve(s["name_page"], s["name_id"], text)       # e.g. "Nemesis Vanguard"
-        base = full.split(" ")[0] if full else ""                # the ship name: "Nemesis"
-        if not base or not re.fullmatch(r"[A-Za-z][A-Za-z0-9'\-]*", base):
-            continue   # skip anything that didn't resolve to a clean word
-        row = {"key": base.lower(), "label": base, "macro": macro,
-               "credits": s["credits"], "size": size_of(macro), "role": role}
-        cur = by_label.get(base.lower())
+        cur = by_label.get(row["key"])
         if cur is None or row["credits"] < cur["credits"]:
-            by_label[base.lower()] = row
+            by_label[row["key"]] = row
+    return sorted(by_label.values(), key=lambda r: (r["credits"], r["key"]))
 
-    rows = sorted(by_label.values(), key=lambda r: (r["credits"], r["key"]))
+
+def main() -> int:
+    root = install_root()
+    if root is None:
+        return 1
+    rows = buyable(*load(root))
     out = Path(__file__).resolve().parents[1] / "twitch_bridge" / "ships.json"
     out.write_text(json.dumps(rows, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {out} ({len(rows)} buyable ships; "

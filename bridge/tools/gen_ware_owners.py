@@ -29,9 +29,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from gen_ships import all_cats, extract  # noqa: E402
+from x4cat import elements, install_root
 
 # Faction(s) to grant the equipment to.
 GRANT_TO = ["twitchally"]
@@ -70,48 +68,40 @@ HEADER = """<?xml version="1.0" encoding="utf-8"?>
 """
 
 
-def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1
-                else r"E:\Steam\steamapps\common\X4 Foundations")
-    if not root.exists():
-        print(f"X4 install not found: {root}")
-        return 1
-
-    # Base game + every DLC: each ships a wares.xml (full document or a <diff> that
-    # adds more), and both shapes contain <ware> elements.
-    wares: list[ET.Element] = []
-    for cat in all_cats(root):
-        blob = extract(cat, "libraries/wares.xml")
-        if not blob:
-            continue
-        try:
-            wares.extend(ET.fromstring(blob).iter("ware"))
-        except ET.ParseError:
-            continue
-    if not wares:
-        print("libraries/wares.xml not found in any archive")
-        return 1
-
+def grant_lines(wares: list[ET.Element]) -> tuple[list[str], int]:
+    """The <add> lines granting GRANT_TO each in-scope ware, and how many
+    xenon/khaak-only wares were left out."""
     lines: list[str] = []
     seen: set[str] = set()
     skipped_alien = 0
     for w in wares:
         wid = w.get("id")
         res = w.find("restriction")
-        if not wid or wid in seen or res is None:
-            continue
-        if res.get("licence") not in LICENCES:
+        if not wid or wid in seen or res is None or res.get("licence") not in LICENCES:
             continue
         seen.add(wid)
         owners = {o.get("faction") for o in w.findall("owner")}
         if owners and owners <= ALIEN_ONLY:
             skipped_alien += 1
             continue
-        if all(f in owners for f in GRANT_TO):
-            continue
         grants = "".join(f'<owner faction="{f}" />' for f in GRANT_TO if f not in owners)
-        lines.append(f'  <add sel="/wares/ware[@id=\'{wid}\']">{grants}</add>')
+        if grants:
+            lines.append(f'  <add sel="/wares/ware[@id=\'{wid}\']">{grants}</add>')
+    return lines, skipped_alien
 
+
+def main() -> int:
+    root = install_root()
+    if root is None:
+        return 1
+    # Base game + every DLC: each ships a wares.xml (full document or a <diff> that
+    # adds more), and both shapes contain <ware> elements.
+    wares = [w for _cat, w in elements(root, "libraries/wares.xml", "ware")]
+    if not wares:
+        print("libraries/wares.xml not found in any archive")
+        return 1
+
+    lines, skipped_alien = grant_lines(wares)
     if not lines:
         print("no wares matched — check LICENCES")
         return 1

@@ -34,9 +34,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from gen_ships import all_cats, extract  # noqa: E402
+from x4cat import elements, install_root
 
 # The factions to grant a population, and the vanilla faction whose character pool
 # they inherit. Both Twitch factions are primaryrace="argon" (libraries/factions.xml).
@@ -76,54 +74,57 @@ HEADER = """<?xml version="1.0" encoding="utf-8"?>
 """
 
 
-def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1
-                else r"E:\Steam\steamapps\common\X4 Foundations")
-    if not root.exists():
-        print(f"X4 install not found: {root}")
-        return 1
+def load(root: Path) -> list[tuple[ET.Element, bool]]:
+    """Every <character>, with whether it came from a DLC.
 
-    # Collect from EVERY archive, not just the last: the base game ships a full
-    # <characters> document, while each DLC ships a <diff> that ADDS more entries to
-    # it. Both shapes contain <character> elements, so iterating the whole tree picks
-    # up DLC-added Argon staff as well as the base ones.
-    entries: list[tuple[ET.Element, bool]] = []   # (character, came from a DLC)
-    for cat in all_cats(root):
-        b = extract(cat, "libraries/characters.xml")
-        if not b:
-            continue
-        # A DLC's archive lives under extensions/<dlc>/; the base game's sits at the
-        # install root. Characters a DLC adds don't exist for someone who lacks it.
-        from_dlc = cat.parent.name.lower() != root.name.lower()
-        try:
-            entries.extend((c, from_dlc) for c in ET.fromstring(b).iter("character"))
-        except ET.ParseError:
-            continue
-    if not entries:
-        print("libraries/characters.xml not found in any archive")
-        return 1
+    Collect from EVERY archive, not just the last: the base game ships a full
+    <characters> document, while each DLC ships a <diff> that ADDS more entries to
+    it, so this picks up DLC-added Argon staff as well as the base ones."""
+    # A DLC's archive lives under extensions/<dlc>/; the base game's sits at the
+    # install root. Characters a DLC adds don't exist for someone who lacks it.
+    return [(c, cat.parent.name.lower() != root.name.lower())
+            for cat, c in elements(root, "libraries/characters.xml", "character")]
 
+
+def replace_line(c: ET.Element, from_dlc: bool) -> str | None:
+    """The <replace> opening character `c` to the Twitch factions, or None if
+    INHERIT_FROM cannot use it."""
+    raw = c.find("category").get("faction")
+    facs = [f.strip() for f in raw.strip("[] ").split(",") if f.strip()]
+    if INHERIT_FROM not in facs:
+        return None
+    merged = facs + [f for f in TWITCH_FACTIONS if f not in facs]
+    # A DLC-defined character does not exist for someone who doesn't own that
+    # DLC, and an unmatched `sel` is a load error. `silent` makes the miss a no-op.
+    quiet = ' silent="true"' if from_dlc else ""
+    sel = f"/characters/character[@id='{c.get('id')}']/category/@faction"
+    return f'  <replace sel="{sel}"{quiet}>[{", ".join(merged)}]</replace>'
+
+
+def replace_lines(entries: list[tuple[ET.Element, bool]]) -> list[str]:
     lines: list[str] = []
     seen: set[str] = set()
     for c, from_dlc in entries:
         cid = c.get("id")
         cat_el = c.find("category")
-        if cid is None or cat_el is None or cid in seen:
-            continue
-        raw = cat_el.get("faction")
-        if not raw:
+        if cid is None or cat_el is None or cid in seen or not cat_el.get("faction"):
             continue
         seen.add(cid)
-        facs = [f.strip() for f in raw.strip("[] ").split(",") if f.strip()]
-        if INHERIT_FROM not in facs:
-            continue
-        merged = facs + [f for f in TWITCH_FACTIONS if f not in facs]
-        # A DLC-defined character does not exist for someone who doesn't own that
-        # DLC, and an unmatched `sel` is a load error. `silent` makes the miss a no-op.
-        quiet = ' silent="true"' if from_dlc else ""
-        sel = f"/characters/character[@id='{cid}']/category/@faction"
-        lines.append(f'  <replace sel="{sel}"{quiet}>[{", ".join(merged)}]</replace>')
+        line = replace_line(c, from_dlc)
+        if line:
+            lines.append(line)
+    return lines
 
+
+def main() -> int:
+    root = install_root()
+    if root is None:
+        return 1
+    entries = load(root)
+    if not entries:
+        print("libraries/characters.xml not found in any archive")
+        return 1
+    lines = replace_lines(entries)
     if not lines:
         print(f"no character entries reference faction '{INHERIT_FROM}' — nothing written")
         return 1
