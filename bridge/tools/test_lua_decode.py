@@ -1,7 +1,8 @@
 """Test the X4 mod's Lua json_decode against the bridge's real wire output.
 
-Needs a Lua VM via `lupa` (pip install lupa). Skips (exit 0) if unavailable,
-since the parsing logic only needs validating where a Lua runtime exists.
+Needs a Lua VM via `lupa` (pip install lupa). FAILS (exit 1) without it: a
+silent skip let WSL's python3, which has no lupa, pass it without running a
+line (r37). Under WSL, run it with Windows `py.exe`, which has lupa.
 
     python tools/test_lua_decode.py
 """
@@ -18,8 +19,8 @@ from twitch_bridge import protocol  # noqa: E402
 try:
     from lupa import LuaRuntime
 except ImportError:
-    print("SKIP: lupa not installed (pip install lupa)")
-    sys.exit(0)
+    print("FAIL: lupa not installed (pip install lupa; under WSL use py.exe)")
+    sys.exit(1)
 
 lua = LuaRuntime(unpack_returned_tuples=True)
 # Capture the registered MD-event handler and any signals the module emits.

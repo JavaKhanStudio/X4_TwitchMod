@@ -31,10 +31,11 @@ ALWAYS pass --no-launcher: by default every start (re)installs an app-menu / Sta
 (launcher.py, config.launcher). Dashboard: http://127.0.0.1:17564/ (config.py); OAuth redirect
 is http://localhost:17563 (dashboard.py). Wallet and tokens live in ~/.config/x4-twitch-bridge/,
 never in the repo (SECURITY.md).
-Tests: `cd bridge && for t in tools/test_*.py; do python3 $t || echo FAIL $t; done`.
-test_lua_decode.py and test_twitch_api.py print SKIP and EXIT 0 when lupa / twitchAPI are
-missing (they are, under WSL): green there proves nothing. test_x4link_win.py fails off
-Windows (no create_pipe_connection) — expected.
+Tests: `cd bridge && for t in tools/test_*.py; do case $t in *lua_decode*|*twitch_api*) py=py.exe;;
+*) py=python3;; esac; $py $t || echo FAIL $t; done`. Those two need lupa / twitchAPI, which only
+Windows py.exe has (WSL's python3 does not, and adding them is Simon's call); without the module
+they now FAIL, never SKIP (r37). test_x4link_win.py fails off Windows (no create_pipe_connection)
+— expected.
 The working tree under WSL has CRLF shell scripts (git keeps them LF; no .gitattributes):
 `bash bridge/tools/smoke_test.sh` dies on `$'\\r'`. From the root, run
 `bash -c "$(tr -d '\\r' < bridge/tools/smoke_test.sh)" bridge/tools/smoke_test.sh` (the last

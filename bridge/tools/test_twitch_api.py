@@ -1,7 +1,8 @@
 """Verify every twitchAPI name our TwitchSource uses exists in the installed lib.
 
 Catches API drift without needing live Twitch credentials. Needs `twitchAPI`
-(pip install -r requirements.txt). Skips (exit 0) if not installed.
+(pip install -r requirements.txt). FAILS (exit 1) if not installed, never a
+silent skip (r37): under WSL, run it with Windows `py.exe`, which has it.
 
     python tools/test_twitch_api.py
 """
@@ -18,8 +19,8 @@ try:
     from twitchAPI.type import AuthScope
     import twitchAPI.object.eventsub as es
 except ImportError:
-    print("SKIP: twitchAPI not installed (pip install -r requirements.txt)")
-    sys.exit(0)
+    print("FAIL: twitchAPI not installed (pip install -r requirements.txt; under WSL use py.exe)")
+    sys.exit(1)
 
 fail = 0
 def check(cond, label):

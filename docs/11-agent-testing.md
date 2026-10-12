@@ -15,7 +15,7 @@ These are placeholders, not real paths (SECURITY.md).
 | `ET.parse` of the MD | `--` in a comment, broken XML: the whole file fails to load | in the #mod pack |
 | `bridge/tools/test_md_sync.py` | a cue under an instantiated cue with no event condition (dropped at load); catalog ↔ MD drift | in the #mod pack |
 | `py.exe bridge/tools/validate_md.py` (md.xsd, Windows `py` + lxml) | unknown attributes, e.g. `signal_cue param=` and `delay=`; a missing required `reason` | ~2 min, or 0.2 s with `--serve` up (r43) |
-| `bridge/tools/test_lua_decode.py` (lupa) | the Lua JSON decode and the argv joining | runs under Windows `py` only (r37) |
+| `bridge/tools/test_lua_decode.py` (lupa) | the Lua JSON decode and the argv joining | in the #companion pack, run with `py.exe`; FAILS without lupa (r37) |
 | `mock_x4.py` + the smoke test | the bridge ↔ pipe protocol, with the game faked | in the #companion pack |
 
 What tier 0 can NEVER prove: that a cue fires, that `$x?` meant what you thought, that
