@@ -13,6 +13,10 @@ import time
 import urllib.request
 from pathlib import Path
 
+# A Windows console is cp1252: printing the page title (it has "\u21c4") would
+# raise UnicodeEncodeError. Write UTF-8 whatever the console is.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parents[1]
 PORT = 17605
 URL = f"http://127.0.0.1:{PORT}/"
