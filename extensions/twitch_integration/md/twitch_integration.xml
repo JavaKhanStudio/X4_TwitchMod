@@ -59,6 +59,82 @@
       </actions>
     </cue>
 
+    <!-- ===== keep the Twitch Raiders at war with literally everyone ==========
+         libraries/factions.xml declares twitchfoe at -1 to every faction we know
+         about, but that list is only a SEED. Two ways it fails to be the truth:
+
+           1. Live relations are savegame state, not a re-read of factions.xml.
+              The engine even exposes <reset_faction_relation> = "reset faction
+              relation to base value in factions.xml", which only makes sense
+              because the live value can differ. So a save made before we extended
+              the list keeps twitchfoe NEUTRAL to Argon, Teladi, ... forever.
+           2. The list can only name factions we knew of at authoring time. Other
+              mods add their own — this install has `ror`, which adds
+              `ossianraider` and `terrantrader`, both tagged claimspace/police/
+              protective. Neither is (or can be) in our XML.
+
+         Either gap produces the same bug: you shoot a raider, and md/notifications.xml
+         (cue AttackResponse) scans the sector for a "protector" station with
+             <match_relation_to faction="$object.owner" comparison="not" relation="enemy"/>
+         Any station whose owner is NOT an enemy of the raider counts as protecting
+         it, so killing one is treated as an attack on a bystander and that faction
+         docks your reputation.
+
+         Fix: on every game start / savegame load, ask the engine which factions are
+         still not enemies of twitchfoe and force them to war. Querying by relation
+         range instead of hardcoding ids means DLC and third-party factions are
+         covered without us naming them. Relations are unlocked for the duration
+         because a locked faction's relations cannot be written (the unlock ->
+         set -> relock idiom is vanilla's, see md/setup_gamestarts.xml:1557).
+         Idempotent: after the first pass the queries come back empty. -->
+    <cue name="Twitch_EnforceRaiderWar" instantiate="true">
+      <conditions>
+        <event_cue_signalled cue="md.Named_Pipes.Reloaded"/>
+      </conditions>
+      <actions>
+        <set_faction_relation_locked faction="faction.twitchfoe" locked="false"/>
+        <!-- "not an enemy" == relation ge -0.01, which is exactly the neutral
+             (-0.01..0.01) and friend (0.01..1.0) ranges. friend also covers the
+             ally/member/dock/self tiers, which are subsets of it. -->
+        <get_factions_by_relation faction="faction.twitchfoe" relation="neutral" result="$twitch_neutrals"/>
+        <get_factions_by_relation faction="faction.twitchfoe" relation="friend" result="$twitch_friends"/>
+        <set_value name="$twitch_targets" exact="$twitch_neutrals"/>
+        <do_all exact="$twitch_friends.count" counter="$i">
+          <do_if value="$twitch_targets.indexof.{$twitch_friends.{$i}} == 0">
+            <append_to_list name="$twitch_targets" exact="$twitch_friends.{$i}"/>
+          </do_if>
+        </do_all>
+        <set_value name="$twitch_changed" exact="0"/>
+        <do_all exact="$twitch_targets.count" counter="$i">
+          <set_value name="$f" exact="$twitch_targets.{$i}"/>
+          <!-- Skip itself (the friend range includes self at 1.0) and ownerless,
+               which owns derelicts and is not a combatant. Also skip factions whose
+               own relations are locked (xenon, khaak): the write would be rejected,
+               and they can never trigger the bug anyway — AttackResponse only
+               accepts a protector station when `not $station.owner.isrelationlocked`,
+               so a Xenon or Kha'ak station can never protect anything. -->
+          <do_if value="($f != faction.twitchfoe) and ($f != faction.ownerless) and (not $f.isrelationlocked)">
+            <set_faction_relation faction="faction.twitchfoe" otherfaction="$f" value="-1"/>
+            <set_value name="$twitch_changed" exact="$twitch_changed + 1"/>
+          </do_if>
+        </do_all>
+        <set_faction_relation_locked faction="faction.twitchfoe" locked="true"/>
+        <debug_text text="'[Twitch] raider war enforced; forced %s faction(s) to hostile'.[$twitch_changed]" filter="general"/>
+      </actions>
+    </cue>
+
+    <!-- The 2s backoff between a pipe failure and the next read attempt. Exists only
+         to carry the <delay>, which is the one place MD lets you express one. -->
+    <cue name="Twitch_RetryRead" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <delay exact="2s"/>
+      <actions>
+        <signal_cue_instantly cue="Twitch_StartReading"/>
+      </actions>
+    </cue>
+
     <!-- One raw line arrived from the bridge. Hand it to Lua to decode. -->
     <cue name="Twitch_OnPipeData" instantiate="true">
       <conditions>
@@ -68,8 +144,13 @@
         <set_value name="$line" exact="event.param"/>
         <do_if value="$line == 'ERROR' or $line == 'CLOSED'">
           <debug_text text="'[Twitch] pipe error/closed; will retry'" filter="general"/>
-          <!-- simple backoff then restart the read loop -->
-          <signal_cue cue="Twitch_StartReading" delay="2s"/>
+          <!-- Back off, THEN restart the read loop. The backoff has to live on the
+               target cue's <delay>: signal_cue accepts neither `delay` nor `param`
+               (md.xsd; vanilla never writes either). It used to be written as
+               `<signal_cue cue="Twitch_StartReading" delay="2s"/>`, where the ignored
+               delay turned "retry in 2s" into a hot loop — x4debug.txt showed ~60
+               retries per SECOND, thousands of lines, whenever the companion was down. -->
+          <signal_cue cue="Twitch_RetryRead"/>
         </do_if>
         <do_else>
           <raise_lua_event name="'Twitch.Decode'" param="$line"/>
@@ -282,6 +363,366 @@
       </actions>
     </cue>
 
+    <!-- ===== FLEET ROSTER (game -> bridge) =================================
+         Publishes the player's ships so viewers can browse them in chat and adopt
+         one by ID code. The bridge holds the roster and does all the naming and
+         pricing; MD only reports what exists.
+
+         PAYLOAD is a flat delimited STRING, not nested JSON: rows joined with ';',
+         fields with '|', as "IDCODE|MACRO|SIZE". Every field is engine-generated and
+         token-safe (id codes are AAA-123, macros are identifiers, size is one
+         letter), so no value can carry a '"', a ';' or a '|' and break the line.
+         Ship NAMES are deliberately NOT sent: they are player- and viewer-editable,
+         our JSON is built by string concatenation, and one ship called `foo"bar`
+         would corrupt the whole message. The bridge already maps macro -> ship type
+         via ships.json, so it can label the roster without them.
+
+         idcode is the join key both ways ("The ID Code of the object as a string",
+         scriptproperties.xml, format AAA-123) — stable, unique, and safe to echo. -->
+    <cue name="Twitch_FleetSyncStart" instantiate="true">
+      <conditions>
+        <event_cue_signalled cue="md.Named_Pipes.Reloaded"/>
+      </conditions>
+      <actions>
+        <!-- cancel first: same anti-stacking rule as Twitch_RankWatchStart. -->
+        <cancel_cue cue="Twitch_FleetSync"/>
+        <signal_cue_instantly cue="Twitch_PublishFleet"/>
+        <signal_cue cue="Twitch_FleetSync"/>
+      </actions>
+    </cue>
+
+    <!-- The poll: republish, then re-arm. No state carried between ticks (the roster
+         is rebuilt from the game each time), so nothing needs a signal param. -->
+    <cue name="Twitch_FleetSync" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <delay exact="45s"/>
+      <actions>
+        <signal_cue_instantly cue="Twitch_PublishFleet"/>
+        <signal_cue cue="Twitch_FleetSync"/>
+      </actions>
+    </cue>
+
+    <cue name="Twitch_PublishFleet" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <actions>
+        <find_ship_by_true_owner name="$Ships" faction="faction.player" space="player.galaxy"
+          multiple="true" class="[class.ship_s, class.ship_m, class.ship_l, class.ship_xl]"/>
+        <set_value name="$Total" exact="$Ships.count"/>
+        <set_value name="$Data" exact="''"/>
+        <set_value name="$Sent" exact="0"/>
+        <set_value name="$i" exact="1"/>
+        <do_while value="$i le $Total">
+          <!-- CAP: one pipe line carries at most 60 ships. A 300-ship empire would
+               otherwise build a ~15KB line every 45s. $Total is sent alongside so the
+               bridge can tell chat the list is partial instead of pretending it is
+               the whole fleet. -->
+          <do_if value="$Sent lt 60">
+            <set_value name="$S" exact="$Ships.{$i}"/>
+            <set_value name="$Sz" exact="'?'"/>
+            <do_if value="$S.isclass.ship_s"><set_value name="$Sz" exact="'S'"/></do_if>
+            <do_elseif value="$S.isclass.ship_m"><set_value name="$Sz" exact="'M'"/></do_elseif>
+            <do_elseif value="$S.isclass.ship_l"><set_value name="$Sz" exact="'L'"/></do_elseif>
+            <do_elseif value="$S.isclass.ship_xl"><set_value name="$Sz" exact="'XL'"/></do_elseif>
+            <!-- Live status rides along with the roster so chat can ask how an
+                 adopted ship is doing without a second round trip. hullpercentage /
+                 shieldpercentage are the engine's own 0..100 values; the SECTOR is
+                 sent as its MACRO (a token) and named by the bridge from
+                 sectors.json, because a sector's display name is text and this
+                 payload is delimiter-separated. A ship with no sector context
+                 (docked oddities) sends an empty field rather than breaking the row. -->
+            <set_value name="$Hull" exact="@$S.hullpercentage"/>
+            <do_if value="$Hull == null"><set_value name="$Hull" exact="0"/></do_if>
+            <set_value name="$Shield" exact="@$S.shieldpercentage"/>
+            <do_if value="$Shield == null"><set_value name="$Shield" exact="0"/></do_if>
+            <set_value name="$Sec" exact="''"/>
+            <do_if value="@$S.sector.macro != null">
+              <set_value name="$Sec" exact="$S.sector.macro"/>
+            </do_if>
+            <set_value name="$Row" exact="'%s|%s|%s|%s|%s|%s'.[$S.idcode, $S.macro, $Sz, $Hull, $Shield, $Sec]"/>
+            <do_if value="$Sent == 0">
+              <set_value name="$Data" exact="$Row"/>
+            </do_if>
+            <do_else>
+              <set_value name="$Data" exact="$Data + ';' + $Row"/>
+            </do_else>
+            <set_value name="$Sent" exact="$Sent + 1"/>
+          </do_if>
+          <set_value name="$i" exact="$i + 1"/>
+        </do_while>
+        <debug_text text="'[Twitch] fleet: %s of %s ships published'.[$Sent, $Total]" filter="general"/>
+        <set_value name="$json"
+          exact="'{&quot;t&quot;:&quot;fleet&quot;,&quot;total&quot;:%s,&quot;sent&quot;:%s,&quot;data&quot;:&quot;%s&quot;}'.[$Total, $Sent, $Data] + '\n'"/>
+        <signal_cue_instantly cue="md.Named_Pipes.Write"
+          param="table[$pipe='twitch', $msg=$json, $cue=Twitch_OnWriteResult]"/>
+      </actions>
+    </cue>
+
+    <!-- ADOPT A SHIP. Two strings are needed here (which ship + what to call it) and
+         MD cannot split one: the `string` datatype has exactly ONE property, the
+         format operator — no split, no substring, no indexof. So this cue does NOT
+         listen on the usual screen. The ui lua re-emits a 2-arg command on a screen
+         of its own with the args in the control and value slots, and `control` is
+         OPTIONAL on <event_ui_triggered> (common.xsd, and vanilla ships the
+         control-less form), so leaving it off here delivers both:
+             event.param2 = the ship's ID code      event.param3 = the new name
+         The NAME is composed bridge-side (it owns the viewer's handle and the ship
+         type from ships.json) and arrives ready to use — MD never concatenates it,
+         so a viewer's handle can't collide with MD string syntax. -->
+    <cue name="Twitch_OnAdoptShip" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_adopt_ship'"/>
+      </conditions>
+      <actions>
+        <set_value name="$Code" exact="@event.param2"/>
+        <set_value name="$NewName" exact="@event.param3"/>
+        <do_if value="$Code == null or $NewName == null">
+          <debug_text text="'[Twitch] adopt: missing args'" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Fail"
+            param="table[$id='adopt_ship', $reason='the request was incomplete']"/>
+        </do_if>
+        <do_else>
+          <run_actions ref="Twitch_ShipByIdCode" result="$Target">
+            <param name="Code" value="$Code"/>
+          </run_actions>
+          <do_if value="$Target == null">
+            <!-- Sold, destroyed, or never ours — the roster the viewer browsed is up
+                 to 45s old. Fail so the bridge refunds; it posts the apology. -->
+            <debug_text text="'[Twitch] adopt: no player ship with idcode %s'.[$Code]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Fail"
+              param="table[$id='adopt_ship', $ref=$Code, $reason='that ship is no longer in the fleet']"/>
+          </do_if>
+          <do_else>
+            <set_object_name object="$Target" name="$NewName"/>
+            <debug_text text="'[Twitch] adopt: %s renamed to %s'.[$Code, $NewName]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_WatchAdd" param="$Target"/>
+            <signal_cue_instantly cue="Twitch_Say"
+              param="'%s has been adopted and renamed %s.'.[$Code, $NewName]"/>
+            <!-- republish so the roster reflects the change without waiting a tick -->
+            <signal_cue_instantly cue="Twitch_PublishFleet"/>
+          </do_else>
+        </do_else>
+      </actions>
+    </cue>
+
+    <!-- ===== ADOPTED-SHIP WATCH (death detection) ==========================
+         ONE cue watches every adopted ship, because <event_object_destroyed> takes
+         a `group` instead of a single `object` and common.xsd states outright:
+         "Adding/removing group members is possible even after the event is set up."
+         So there is no per-ship watcher cue and no nested-cue lifetime puzzle — the
+         group is the subscription list.
+
+         The group lives on this STATIC parent so it survives; the children reach it
+         as `parent.$Adopted` (vanilla does the same, e.g. groupname="parent.$InteriorGroup").
+         It is created EMPTY up front because the event requires the group to exist
+         ("may be empty") before it arms.
+
+         Group membership is not authoritative anywhere: the bridge owns adoptions.
+         This is only "which ships should shout when they die". The bridge re-arms it
+         after a load by sending watch_ship per adoption, because a savegame loaded
+         from a different timeline may hold a completely different group. -->
+    <cue name="Twitch_ShipWatch">
+      <actions>
+        <add_to_group groupname="$Adopted" list="[]"/>
+      </actions>
+      <cues>
+        <cue name="Twitch_WatchAdd" instantiate="true">
+          <conditions>
+            <event_cue_signalled/>
+          </conditions>
+          <actions>
+            <!-- check="false": re-arming after a load can hand us a ship that has
+                 since been destroyed, and that must not spam the log with errors. -->
+            <add_to_group groupname="parent.$Adopted" object="event.param" check="false"/>
+          </actions>
+        </cue>
+
+        <cue name="Twitch_WatchDrop" instantiate="true">
+          <conditions>
+            <event_cue_signalled/>
+          </conditions>
+          <actions>
+            <remove_from_group group="parent.$Adopted" object="event.param"/>
+          </actions>
+        </cue>
+
+        <!-- An adopted ship just died. Tell the bridge, which owns the adoption and
+             does the announcing. A destroyed object is still READABLE here — vanilla's
+             own ObjectInvincibilityManager logs event.object.macro/.sector/.position
+             from inside this event — so the hull needed to rebuild it is captured at
+             the one moment it is still knowable. X4 also removes a destroyed object
+             from its groups automatically, so no cleanup is needed here.
+
+             The KILLER is reported as its owning faction's display name, never the
+             killer ship's name: faction names are game text (no quotes, no
+             backslashes) while a ship name can be anything a player or a viewer
+             typed, and this JSON is built by concatenation. -->
+        <cue name="Twitch_ShipDown" instantiate="true">
+          <conditions>
+            <event_object_destroyed group="parent.$Adopted"/>
+          </conditions>
+          <actions>
+            <set_value name="$Code" exact="@event.object.idcode"/>
+            <set_value name="$Macro" exact="@event.object.macro"/>
+            <set_value name="$Killer" exact="'something unknown'"/>
+            <do_if value="@event.param.owner != null">
+              <set_value name="$Killer" exact="event.param.owner.name"/>
+            </do_if>
+            <do_if value="$Code == null or $Macro == null">
+              <debug_text text="'[Twitch] ship down but unreadable (code=%s macro=%s)'.[$Code, $Macro]" filter="general"/>
+            </do_if>
+            <do_else>
+              <debug_text text="'[Twitch] ship down: %s (%s) killed by %s'.[$Code, $Macro, $Killer]" filter="general"/>
+              <set_value name="$json"
+                exact="'{&quot;t&quot;:&quot;shipdown&quot;,&quot;idcode&quot;:&quot;%s&quot;,&quot;macro&quot;:&quot;%s&quot;,&quot;killer&quot;:&quot;%s&quot;}'.[$Code, $Macro, $Killer] + '\n'"/>
+              <signal_cue_instantly cue="md.Named_Pipes.Write"
+                param="table[$pipe='twitch', $msg=$json, $cue=Twitch_OnWriteResult]"/>
+            </do_else>
+          </actions>
+        </cue>
+      </cues>
+    </cue>
+
+    <!-- Re-arm the watch list. The bridge sends one of these per adoption whenever it
+         (re)connects, so a save loaded from another timeline still ends up watching
+         the ships the registry thinks are adopted. Idempotent: adding a ship already
+         in the group is harmless. -->
+    <cue name="Twitch_OnWatchShip" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'watch_ship'"/>
+      </conditions>
+      <actions>
+        <set_value name="$Code" exact="@event.param3"/>
+        <do_if value="$Code != null and $Code != ''">
+          <run_actions ref="Twitch_ShipByIdCode" result="$Target">
+            <param name="Code" value="$Code"/>
+          </run_actions>
+          <do_if value="$Target != null">
+            <signal_cue_instantly cue="Twitch_WatchAdd" param="$Target"/>
+          </do_if>
+          <do_else>
+            <debug_text text="'[Twitch] watch: %s not in the fleet'.[$Code]" filter="general"/>
+          </do_else>
+        </do_if>
+      </actions>
+    </cue>
+
+    <!-- RESURRECT: build a replacement hull for a destroyed adopted ship.
+         X4 cannot un-destroy anything, so this creates a NEW ship of the same macro —
+         which means it has a NEW id code, and the bridge's adoption (keyed by id code)
+         has to be re-pointed. That is why this reports back: MD is the only side that
+         learns the new code.
+
+         DELIBERATELY DOES NOT RENAME. The bridge answers the shipnew report by sending
+         an ordinary adopt_ship command for the new code, so the rename runs through the
+         one path that already exists and is tested, instead of a second copy of it here.
+         That also keeps this to TWO args (old code + macro), which is all the event has
+         slots for.
+
+         Spawns at the player's HEADQUARTERS when there is one (safe, thematic — it was
+         rebuilt in the yards), falling back to the player so a game without an HQ still
+         works rather than failing the purchase. -->
+    <cue name="Twitch_OnResurrectShip" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_resurrect_ship'"/>
+      </conditions>
+      <actions>
+        <set_value name="$Old" exact="@event.param2"/>
+        <set_value name="$Macro" exact="@event.param3"/>
+        <set_value name="$Ref" exact="null"/>
+        <do_if value="player.headquarters.exists">
+          <set_value name="$Ref" exact="player.headquarters"/>
+        </do_if>
+        <do_elseif value="player.occupiedship.exists">
+          <set_value name="$Ref" exact="player.occupiedship"/>
+        </do_elseif>
+        <do_elseif value="player.entity.exists">
+          <set_value name="$Ref" exact="player.entity"/>
+        </do_elseif>
+
+        <do_if value="$Old == null or $Macro == null or $Ref == null">
+          <debug_text text="'[Twitch] resurrect: bad args or nowhere to put it (old=%s macro=%s)'.[$Old, $Macro]" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Fail"
+            param="table[$id='resurrect_ship', $ref=$Old, $reason='the shipyard could not be reached']"/>
+        </do_if>
+        <do_else>
+          <!-- same loadout roll as the gift-ship path: quality 0.3..1.0 -->
+          <set_value name="$qr" min="3" max="10"/>
+          <set_value name="$q" exact="$qr / 10.0"/>
+          <create_ship name="$New" macro="macro.{$Macro}" zone="$Ref.zone">
+            <owner exact="faction.player" overridenpc="true"/>
+            <pilot>
+              <select race="[race.argon, race.paranid, race.teladi]" tags="tag.aipilot"/>
+            </pilot>
+            <loadout>
+              <quantity exact="1.0"><variation exact="0.5"/></quantity>
+              <quality exact="$q"/>
+            </loadout>
+            <safepos object="$Ref" x="0" y="0" z="8km"/>
+          </create_ship>
+          <do_if value="$New == null">
+            <signal_cue_instantly cue="Twitch_Fail"
+              param="table[$id='resurrect_ship', $ref=$Old, $reason='the hull could not be built']"/>
+          </do_if>
+          <do_else>
+            <signal_cue_instantly cue="Twitch_WatchAdd" param="$New"/>
+            <debug_text text="'[Twitch] resurrect: %s rebuilt as %s'.[$Old, $New.idcode]" filter="general"/>
+            <set_value name="$json"
+              exact="'{&quot;t&quot;:&quot;shipnew&quot;,&quot;old&quot;:&quot;%s&quot;,&quot;idcode&quot;:&quot;%s&quot;}'.[$Old, $New.idcode] + '\n'"/>
+            <signal_cue_instantly cue="md.Named_Pipes.Write"
+              param="table[$pipe='twitch', $msg=$json, $cue=Twitch_OnWriteResult]"/>
+            <signal_cue_instantly cue="Twitch_PublishFleet"/>
+          </do_else>
+        </do_else>
+      </actions>
+    </cue>
+
+    <!-- ABANDON: the adopter gives the ship back. The claim itself is released on
+         the bridge (it owns the registry); all the game has to do is undo the rename.
+
+         <clear_object_name> — "Clear an object's name and revert to default"
+         (common.xsd) — NOT a set_object_name back to the type name. Those look
+         identical on a stock ship, but if the PLAYER had named the ship before a
+         viewer adopted it, writing the type name back would quietly destroy their
+         name; clearing restores whatever the game would have called it.
+
+         ONE arg, so unlike Twitch_OnAdoptShip this stays on the ordinary control
+         form and reads the id code straight out of param3.
+
+         A missing ship is NOT a failure worth announcing: a destroyed ship is the
+         most likely thing someone wants to let go of, the release already happened
+         bridge-side, and the bridge has already confirmed it in chat. Log it and
+         stop — a Twitch_Fail here would refund a free action and post a second,
+         contradictory line. -->
+    <cue name="Twitch_OnAbandonShip" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'abandon_ship'"/>
+      </conditions>
+      <actions>
+        <set_value name="$Code" exact="@event.param3"/>
+        <do_if value="$Code == null or $Code == ''">
+          <debug_text text="'[Twitch] abandon: no id code'" filter="general"/>
+        </do_if>
+        <do_else>
+          <run_actions ref="Twitch_ShipByIdCode" result="$Target">
+            <param name="Code" value="$Code"/>
+          </run_actions>
+          <do_if value="$Target == null">
+            <debug_text text="'[Twitch] abandon: %s is no longer in the fleet (name left alone)'.[$Code]" filter="general"/>
+          </do_if>
+          <do_else>
+            <clear_object_name object="$Target"/>
+            <signal_cue_instantly cue="Twitch_WatchDrop" param="$Target"/>
+            <debug_text text="'[Twitch] abandon: %s name reverted'.[$Code]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_PublishFleet"/>
+          </do_else>
+        </do_else>
+      </actions>
+    </cue>
+
     <cue name="Twitch_OnSpawn" instantiate="true">
       <conditions>
         <event_ui_triggered screen="'Twitch_Integration'" control="'spawn'"/>
@@ -409,7 +850,7 @@
               <do_if value="player.occupiedship.exists">
                 <create_order id="'AssignCommander'" object="$ally">
                   <param name="commander" value="player.occupiedship"/>
-                  <param name="assignment" value="assignment.defend"/>
+                  <param name="assignment" value="assignment.defence"/>
                   <param name="cancelorders" value="true"/>
                 </create_order>
               </do_if>
@@ -421,6 +862,466 @@
           </do_while>
           <signal_cue_instantly cue="Twitch_Say" param="'Reinforcements have arrived!'"/>
         </do_if>
+      </actions>
+    </cue>
+
+    <!-- ===== TRACKER MINES ===================================================
+         Seed a ring of hostile Tracker Mines around the player. They wake up,
+         home in, and detonate.
+
+         WHICH MINE. The game ships three (libraries text page 20201):
+           weapon_gen_mine_01_macro  "Mine"             static, no follow
+           weapon_gen_mine_02_macro  "Tracker Mine"     follows, NO friend/foe
+           weapon_gen_mine_03_macro  "Friend/Foe Mine"  follows, friend/foe list
+         We use 02 — the Tracker Mine. Its numbers (verified in the macro file):
+         explosiondamage 10000, hull 100, range follow="1000" abort="1500"
+         trigger="80". So a mine acquires anything inside 1km, gives up past
+         1.5km, and blows at 80m — it is dodgeable and it is shootable (100 hull
+         is one burst), which is what keeps this the right side of unfair.
+
+         WHY THEY SPAWN 700-1000m OUT: that is inside follow range, so every mine
+         acquires immediately instead of sitting inert, but still leaves the
+         player most of a kilometre of runway to react.
+
+         NO FOE LIST. <set_object_foe_list> is a friend/foe feature — the mine
+         datatype's friendlist/foelist are documented "only for mines friend/foe
+         feature" (scriptproperties.xml) and the Tracker Mine has
+         <trigger friendfoe="0"/>. Vanilla's own seeking-mine mission
+         (md/gm_rescue_ship_lib.xml, Setup_Variation_SeekingMines) switched from
+         02 to 03 for exactly that reason — it wanted to pin the mines to the
+         player only. We do NOT: a Tracker Mine going after whatever wanders past
+         is the chaos being bought. It does mean a passing NPC can eat one.
+
+         RELATION CHANGES ARE DISABLED on every mine, straight from that same
+         vanilla library. Without it a mine killing an NPC would move the
+         twitchfoe faction's standing around, and a viewer's 700 coins would be
+         quietly rewriting diplomacy. Owner is twitchfoe so the mines read as
+         hostile on the map and the player can shoot them for free.
+
+         THEY CLEAN THEMSELVES UP after 10 minutes (Twitch_MineCleanup). This is
+         a repeatable purchase; without it every buy leaves permanent junk
+         drifting in the sector for the rest of the save. -->
+    <cue name="Twitch_OnMineField" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'mine_field'"/>
+      </conditions>
+      <actions>
+        <debug_text text="'[Twitch] mine_field requested'" filter="general"/>
+        <do_if value="player.occupiedship.exists">
+          <set_value name="$ref" exact="player.occupiedship"/>
+        </do_if>
+        <do_else>
+          <set_value name="$ref" exact="player.entity"/>
+        </do_else>
+        <do_if value="$ref.exists">
+          <set_value name="$Mines" exact="[]"/>
+          <do_all exact="6">
+            <!-- random attitude, as the vanilla mine spawner does -->
+            <set_value name="$Yaw" min="0deg" max="359deg"/>
+            <set_value name="$Pitch" min="0deg" max="359deg"/>
+            <set_value name="$Roll" min="0deg" max="359deg"/>
+            <create_object name="$Mine" macro="macro.weapon_gen_mine_02_macro"
+                           sector="$ref.sector" zone="$ref.zone" owner="faction.twitchfoe">
+              <safepos object="$ref" min="700m" max="1000m"/>
+              <rotation yaw="$Yaw" pitch="$Pitch" roll="$Roll"/>
+            </create_object>
+            <!-- `?` is correct here: create_object leaves $Mine UNASSIGNED when it
+                 fails, which is the one case the ? test is actually for. -->
+            <do_if value="$Mine?">
+              <set_object_relation_behaviour object="$Mine" disable="true"/>
+              <append_to_list name="$Mines" exact="$Mine"/>
+            </do_if>
+          </do_all>
+          <do_if value="$Mines.count">
+            <!-- Hand the list to the cleanup cue. A list, not a group: groups are
+                 bound to the cue that declared them, lists marshal through a
+                 signal param (same shape the disarm/re-arm pair uses). -->
+            <signal_cue_instantly cue="Twitch_MineCleanup" param="$Mines"/>
+            <debug_text text="'[Twitch] mine_field: %s tracker mines around %s'.[$Mines.count, $ref.knownname]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Say"
+              param="'MINES! %s Tracker Mines just went live around the player. They home in, they blow at 80m, and they have paper-thin hulls — shoot them or outrun them. They self-destruct in 10 minutes.'.[$Mines.count]"/>
+          </do_if>
+          <do_else>
+            <debug_text text="'[Twitch] mine_field: create_object placed nothing'" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Fail"
+              param="table[$id='mine_field', $reason='no safe position to place mines']"/>
+          </do_else>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] mine_field skipped: no player ref'" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Fail"
+            param="table[$id='mine_field', $reason='the player is not in space right now']"/>
+        </do_else>
+      </actions>
+    </cue>
+
+    <!-- Sweep up whatever survived. Same signalled-cue-with-delay shape as
+         Twitch_StationRearm: the cue captures event.param when it triggers and
+         only then waits out its <delay>, so the list is still the right list.
+         .exists is the guard, not `?` — most of these mines are expected to be
+         gone by now (detonated or shot), and a destroyed object is not null, it
+         is a stale reference. -->
+    <cue name="Twitch_MineCleanup" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <delay exact="600s"/>
+      <actions>
+        <set_value name="$Mines" exact="event.param"/>
+        <set_value name="$Swept" exact="0"/>
+        <do_all exact="$Mines.count" counter="$i">
+          <do_if value="$Mines.{$i}.exists">
+            <destroy_object object="$Mines.{$i}"/>
+            <set_value name="$Swept" exact="$Swept + 1"/>
+          </do_if>
+        </do_all>
+        <debug_text text="'[Twitch] mine_field cleanup: %s of %s mines swept'.[$Swept, $Mines.count]" filter="general"/>
+      </actions>
+    </cue>
+
+    <!-- ===== XENON ARMADA ====================================================
+         The Doom button: a full Xenon battle group jumps in on the player, led
+         by a Xenon I.
+
+         WHICH HULLS. Verified against the game's own macro files; the display
+         letter is the <identification name> the macro points at in text page
+         20101, NOT something the file name can be trusted for (the only "xen_l"
+         macro is the Terraformer, and the I is a CARRIER macro, not a
+         battleship one):
+           ship_xen_xl_carrier_01_a_macro    "I"   hull 480000   the flagship
+           ship_xen_xl_destroyer_01_a_macro  "K"   hull 265000
+           ship_xen_m_corvette_02_a_macro    "PE"  hull  12600
+           ship_xen_m_fighter_01_a_macro     "P"   hull  10000
+           ship_xen_s_fighter_02_a_macro     "M"   hull   2900
+           ship_xen_s_fighter_01_a_macro     "N"   hull   2500
+         Cross-check: md/crisis_xenon_khaak_combo.xml scores those same two XL
+         macros with the comments "Xenon I" and "Xenon K".
+
+         WHERE THEY COME IN. One staging point 14..20km from the player
+         (get_safe_pos, SECTOR coordinates, station plot boxes avoided), then
+         every ship takes its own safe spot around it. Far enough that a capital
+         cannot materialise inside the player's hull, close enough to be on
+         radar the moment it lands: watching it come is the whole purchase. The
+         create_ship calls therefore pass sector=, not zone= == the staging
+         position is in sector space and the two frames must match. Same shape
+         as vanilla's own ambush spawner, md/gm_ambush.xml.
+
+         ONE FLAGSHIP, EVERYONE ELSE SUBORDINATE. The I gets the Attack order;
+         every other hull is handed to it with AssignCommander +
+         assignment.attack, so the group manoeuvres and fights as one fleet
+         instead of 21 ships each solving the problem alone. Also gm_ambush.
+
+         NO RELATION WRITES. The Xenon are already at war with everyone and
+         their relations are LOCKED (cf. Twitch_EnforceRaiderWar above), so
+         there is nothing to set here and nothing that could be rejected.
+
+         THEY DO NOT CLEAN THEMSELVES UP, unlike the tracker mines. An armada
+         that evaporates on a timer is weather, not doom. Whatever survives
+         keeps its default Patrol order and is now part of the save == which is
+         why this one is capped at 1 per window and priced like the end of the
+         world. -->
+    <cue name="Twitch_OnXenonArmada" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'xenon_armada'"/>
+      </conditions>
+      <actions>
+        <debug_text text="'[Twitch] xenon_armada requested'" filter="general"/>
+        <do_if value="player.occupiedship.exists">
+          <set_value name="$ref" exact="player.occupiedship"/>
+        </do_if>
+        <do_else>
+          <set_value name="$ref" exact="player.entity"/>
+        </do_else>
+        <do_if value="$ref.exists">
+          <!-- The muster point. radius is the free space the WHOLE group needs;
+               each ship then spreads out around it with its own safepos. -->
+          <get_safe_pos result="$Staging" sector="$ref.sector" object="$ref"
+                        radius="3km" min="14km" max="20km"
+                        allowyaxis="false" includeplotbox="true"/>
+          <!-- '== null', not '$Staging?': get_safe_pos ASSIGNS the variable even
+               when it has nothing to give, so the ? form is always true. -->
+          <do_if value="$Staging != null">
+            <create_ship name="$Flagship" macro="ship_xen_xl_carrier_01_a_macro" sector="$ref.sector">
+              <owner exact="faction.xenon" overridenpc="true"/>
+              <pilot>
+                <select faction="faction.xenon" tags="tag.pilot"/>
+              </pilot>
+              <loadout>
+                <quantity exact="1.0"><variation exact="0"/></quantity>
+                <quality exact="0.6"/>
+              </loadout>
+              <orientation refobject="$ref" orientation="look_at"/>
+              <safepos value="$Staging" radius="1.5km"/>
+            </create_ship>
+            <!-- `?` IS right here: a failed create_ship leaves the name unassigned,
+                 which is the one case that test is for. -->
+            <do_if value="$Flagship?">
+              <set_value name="$Spawned" exact="1"/>
+              <cancel_all_orders object="$Flagship"/>
+              <create_order object="$Flagship" id="'Patrol'" default="true"/>
+              <!-- On foot / docked there may be no player ship to point at; the
+                   default Patrol order above still puts the fleet in the sector
+                   hunting anything it hates, which in Xenon terms is everything. -->
+              <do_if value="player.ship.exists">
+                <create_order object="$Flagship" id="'Attack'" immediate="true">
+                  <param name="primarytarget" value="player.ship"/>
+                  <param name="secondarytargets" value="player.ship.subordinates"/>
+                  <param name="pursuetargets" value="true"/>
+                  <param name="allowothertargets" value="true"/>
+                  <param name="checkrelation" value="true"/>
+                </create_order>
+              </do_if>
+              <!-- The rest of the battle group, one row per hull. $radius is the
+                   elbow room that hull needs at the staging point. -->
+              <set_value name="$Wings" exact="[
+                table[$macro=macro.ship_xen_xl_destroyer_01_a_macro, $count=3, $radius=1.2km],
+                table[$macro=macro.ship_xen_m_corvette_02_a_macro,   $count=4, $radius=0.5km],
+                table[$macro=macro.ship_xen_m_fighter_01_a_macro,    $count=6, $radius=0.5km],
+                table[$macro=macro.ship_xen_s_fighter_01_a_macro,    $count=4, $radius=0.3km],
+                table[$macro=macro.ship_xen_s_fighter_02_a_macro,    $count=4, $radius=0.3km]]"/>
+              <do_all exact="$Wings.count" counter="$w">
+                <set_value name="$Wing" exact="$Wings.{$w}"/>
+                <do_all exact="$Wing.$count">
+                  <!-- Clear it first: without this a failed create leaves the
+                       PREVIOUS ship in $Escort and the guard below would re-order
+                       a ship that already has its orders. -->
+                  <remove_value name="$Escort"/>
+                  <create_ship name="$Escort" macro="$Wing.$macro" sector="$ref.sector">
+                    <owner exact="faction.xenon" overridenpc="true"/>
+                    <pilot>
+                      <select faction="faction.xenon" tags="tag.pilot"/>
+                    </pilot>
+                    <loadout>
+                      <quantity exact="1.0"><variation exact="0"/></quantity>
+                      <quality exact="0.5"/>
+                    </loadout>
+                    <orientation refobject="$ref" orientation="look_at"/>
+                    <safepos value="$Staging" radius="$Wing.$radius"/>
+                  </create_ship>
+                  <do_if value="$Escort?">
+                    <cancel_all_orders object="$Escort"/>
+                    <create_order id="'AssignCommander'" object="$Escort">
+                      <param name="commander" value="$Flagship"/>
+                      <param name="assignment" value="assignment.attack"/>
+                      <param name="cancelorders" value="true"/>
+                    </create_order>
+                    <set_value name="$Spawned" exact="$Spawned + 1"/>
+                  </do_if>
+                </do_all>
+              </do_all>
+              <debug_text text="'[Twitch] xenon_armada: %s ships staged near %s'.[$Spawned, $ref.knownname]" filter="general"/>
+              <signal_cue_instantly cue="Twitch_Say"
+                param="'XENON ARMADA! A Xenon I and %s escorts just came out of nowhere and they are coming for the player. Run, or find out.'.[$Spawned - 1]"/>
+            </do_if>
+            <do_else>
+              <debug_text text="'[Twitch] xenon_armada: the I could not be placed'" filter="general"/>
+              <signal_cue_instantly cue="Twitch_Fail"
+                param="table[$id='xenon_armada', $reason='there is no room here to jump in a Xenon I']"/>
+            </do_else>
+          </do_if>
+          <do_else>
+            <debug_text text="'[Twitch] xenon_armada: no staging position in %s'.[$ref.sector.knownname]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Fail"
+              param="table[$id='xenon_armada', $reason='this sector is too crowded to stage an armada in']"/>
+          </do_else>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] xenon_armada skipped: no player ref'" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Fail"
+            param="table[$id='xenon_armada', $reason='the player is not in space right now']"/>
+        </do_else>
+      </actions>
+    </cue>
+
+    <!-- ===== TERRAN TASK FORCE ===============================================
+         The answer to the armada: an ATF battle group jumps in on the player's
+         side and goes hunting. Deliberately the mirror image of
+         Twitch_OnXenonArmada above, cue for cue, so the two read as a pair.
+
+         WHICH HULLS. Verified against the Cradle of Humanity archive
+         (ego_dlc_terran/ext_01.cat); the name is the <identification> the macro
+         points at in text page 20101, and note that the two heaviest warships
+         are ATF hulls, not `ter_` ones:
+           ship_atf_xl_battleship_01_a_macro  "Asgard"   hull 330000  flagship
+           ship_atf_l_destroyer_01_a_macro    "Syn"      hull 180700
+           ship_ter_l_destroyer_01_a_macro    "Osaka"    hull 104000
+           ship_ter_m_frigate_01_a_macro      "Falx"     hull  26000
+           ship_ter_m_corvette_01_a_macro     "Katana"   hull  12200
+           ship_ter_s_heavyfighter_01_a_macro "Gladius"  hull   4800
+           ship_ter_s_fighter_01_a_macro      "Kukri"    hull   3700
+
+         IS IT ACTUALLY A MATCH? 22 hulls against the armada's 22, five capitals
+         against four. On raw hull the Xenon are ahead (1.41M to 1.09M), which
+         understates the Terrans badly: hull ignores Terran shielding entirely,
+         and the Asgard's main battery is the one gun in the game that deletes a
+         Xenon I. Read the intent instead of the arithmetic — this is meant to
+         WIN, with losses, because it is what a viewer buys to survive the thing
+         another viewer bought. A coin flip would be a better fight and a much
+         worse purchase.
+
+         WHOSE SHIPS. faction.twitchally, NOT faction.terran. The Twitch Allies
+         are pinned friendly to the player and hostile to the Xenon in this mod's
+         own libraries/factions.xml, so the rescue behaves the same whatever the
+         player's standing with the real Terran Protectorate happens to be — and
+         a player at war with the Terrans is exactly the player most likely to be
+         buying a rescue. The hulls, the names and the flavour are Terran; the
+         flag is ours.
+
+         WHO THEY SHOOT: whoever the PLAYER is at war with (match_relation_to
+         against faction.player, not against twitchally). Two things fall out of
+         that for free — the player's own ships can never match, since a faction
+         is not its own enemy, and the task force fights the player's war rather
+         than a war of its own.
+
+         DLC. Every hull here is Cradle of Humanity content, so the macros are
+         resolved from STRINGS via macro.{$name} (the `!buy ship` idiom) rather
+         than written as literal keywords: without the DLC the lookup comes back
+         empty, create_ship declines, and the guards below turn that into one
+         refunded purchase instead of a script error per ship.
+
+         Like the armada, NOTHING CLEANS THEM UP. Survivors keep the sector. -->
+    <cue name="Twitch_OnTerranTaskForce" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'terran_taskforce'"/>
+      </conditions>
+      <actions>
+        <debug_text text="'[Twitch] terran_taskforce requested'" filter="general"/>
+        <do_if value="player.occupiedship.exists">
+          <set_value name="$ref" exact="player.occupiedship"/>
+        </do_if>
+        <do_else>
+          <set_value name="$ref" exact="player.entity"/>
+        </do_else>
+        <do_if value="$ref.exists">
+          <!-- Closer in than the armada's 14..20km: the cavalry should arrive
+               between the player and whatever is coming, not behind it. -->
+          <get_safe_pos result="$Staging" sector="$ref.sector" object="$ref"
+                        radius="3km" min="8km" max="12km"
+                        allowyaxis="false" includeplotbox="true"/>
+          <do_if value="$Staging != null">
+            <set_value name="$AsgardMacro" exact="'ship_atf_xl_battleship_01_a_macro'"/>
+            <create_ship name="$Flagship" macro="macro.{$AsgardMacro}" sector="$ref.sector">
+              <owner exact="faction.twitchally" overridenpc="true"/>
+              <pilot>
+                <!-- race, not faction: crewing BY FACTION works for the Xenon above
+                     because the game ships Xenon characters. twitchally is ours and
+                     has no character macros of its own, so the pick has to go via
+                     its primaryrace — the form the Twitch Allies squad in
+                     Twitch_OnReinforcements already uses. A create_ship whose pilot
+                     select finds nobody is a capital ship that never moves. -->
+                <select race="race.argon" tags="tag.aipilot"/>
+              </pilot>
+              <loadout>
+                <quantity exact="1.0"><variation exact="0"/></quantity>
+                <quality exact="0.8"/>
+              </loadout>
+              <orientation refobject="$ref" orientation="look_at"/>
+              <safepos value="$Staging" radius="1.5km"/>
+            </create_ship>
+            <do_if value="$Flagship?">
+              <set_value name="$Spawned" exact="1"/>
+              <set_object_name object="$Flagship" name="'TER Asgard'"/>
+              <!-- Pick the fight BEFORE building the fleet, so every wing can be
+                   pointed at it as it is created. Biggest first: the Asgard should
+                   be shooting at the Xenon I, not chasing a fighter. -->
+              <find_ship name="$Target" space="$ref.sector" class="class.ship_xl">
+                <match_relation_to faction="faction.player" relation="enemy"/>
+              </find_ship>
+              <!-- Truthiness, not '?': find_* ASSIGNS the name and leaves it null
+                   when nothing matched, so '$Target?' would be true either way. -->
+              <do_if value="not $Target">
+                <find_ship name="$Target" space="$ref.sector" class="class.ship_l">
+                  <match_relation_to faction="faction.player" relation="enemy"/>
+                </find_ship>
+              </do_if>
+              <do_if value="not $Target">
+                <find_ship name="$Target" space="$ref.sector">
+                  <match_relation_to faction="faction.player" relation="enemy"/>
+                </find_ship>
+              </do_if>
+              <find_ship name="$Hostiles" space="$ref.sector" multiple="true">
+                <match_relation_to faction="faction.player" relation="enemy"/>
+              </find_ship>
+              <cancel_all_orders object="$Flagship"/>
+              <create_order object="$Flagship" id="'Patrol'" default="true"/>
+              <do_if value="$Target">
+                <create_order object="$Flagship" id="'Attack'" immediate="true">
+                  <param name="primarytarget" value="$Target"/>
+                  <param name="secondarytargets" value="$Hostiles"/>
+                  <param name="pursuetargets" value="true"/>
+                  <param name="allowothertargets" value="true"/>
+                  <param name="checkrelation" value="true"/>
+                </create_order>
+              </do_if>
+              <!-- The rest of the task force. $name is the hull's real name, used
+                   for the ship name so the map reads as a Terran order of battle
+                   instead of 22 identical contacts. -->
+              <set_value name="$Wings" exact="[
+                table[$macro='ship_atf_l_destroyer_01_a_macro',    $count=2, $radius=1.2km, $name='Syn'],
+                table[$macro='ship_ter_l_destroyer_01_a_macro',    $count=2, $radius=1.2km, $name='Osaka'],
+                table[$macro='ship_ter_m_frigate_01_a_macro',      $count=4, $radius=0.5km, $name='Falx'],
+                table[$macro='ship_ter_m_corvette_01_a_macro',     $count=4, $radius=0.5km, $name='Katana'],
+                table[$macro='ship_ter_s_heavyfighter_01_a_macro', $count=4, $radius=0.3km, $name='Gladius'],
+                table[$macro='ship_ter_s_fighter_01_a_macro',      $count=5, $radius=0.3km, $name='Kukri']]"/>
+              <do_all exact="$Wings.count" counter="$w">
+                <set_value name="$Wing" exact="$Wings.{$w}"/>
+                <do_all exact="$Wing.$count" counter="$i">
+                  <!-- Clear it first: without this a failed create leaves the
+                       PREVIOUS ship in $Escort and the guard below re-orders and
+                       renames a ship that is already in the fleet. -->
+                  <remove_value name="$Escort"/>
+                  <create_ship name="$Escort" macro="macro.{$Wing.$macro}" sector="$ref.sector">
+                    <owner exact="faction.twitchally" overridenpc="true"/>
+                    <pilot>
+                      <select race="race.argon" tags="tag.aipilot"/>
+                    </pilot>
+                    <loadout>
+                      <quantity exact="1.0"><variation exact="0"/></quantity>
+                      <quality exact="0.7"/>
+                    </loadout>
+                    <orientation refobject="$ref" orientation="look_at"/>
+                    <safepos value="$Staging" radius="$Wing.$radius"/>
+                  </create_ship>
+                  <do_if value="$Escort?">
+                    <set_object_name object="$Escort" name="'TER %s %s'.[$Wing.$name, $i]"/>
+                    <cancel_all_orders object="$Escort"/>
+                    <create_order id="'AssignCommander'" object="$Escort">
+                      <param name="commander" value="$Flagship"/>
+                      <param name="assignment" value="assignment.attack"/>
+                      <param name="cancelorders" value="true"/>
+                    </create_order>
+                    <set_value name="$Spawned" exact="$Spawned + 1"/>
+                  </do_if>
+                </do_all>
+              </do_all>
+              <debug_text text="'[Twitch] terran_taskforce: %s ships, target %s'.[$Spawned, $Target]" filter="general"/>
+              <do_if value="$Target">
+                <signal_cue_instantly cue="Twitch_Say"
+                  param="'TERRAN TASK FORCE! An Asgard and %s more hulls just jumped in under the Twitch Allies flag, and they are already shooting at what the player is fighting.'.[$Spawned - 1]"/>
+              </do_if>
+              <do_else>
+                <signal_cue_instantly cue="Twitch_Say"
+                  param="'TERRAN TASK FORCE! An Asgard and %s more hulls just jumped in under the Twitch Allies flag. Nothing hostile in the sector yet, so they are on patrol and waiting for it.'.[$Spawned - 1]"/>
+              </do_else>
+            </do_if>
+            <do_else>
+              <!-- No Asgard means no Cradle of Humanity, nine times out of ten. -->
+              <debug_text text="'[Twitch] terran_taskforce: no Asgard (Terran DLC missing, or no room)'" filter="general"/>
+              <signal_cue_instantly cue="Twitch_Fail"
+                param="table[$id='terran_taskforce', $reason='no Terran flagship could be launched (is Cradle of Humanity installed?)']"/>
+            </do_else>
+          </do_if>
+          <do_else>
+            <debug_text text="'[Twitch] terran_taskforce: no staging position in %s'.[$ref.sector.knownname]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Fail"
+              param="table[$id='terran_taskforce', $reason='this sector is too crowded to stage a task force in']"/>
+          </do_else>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] terran_taskforce skipped: no player ref'" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Fail"
+            param="table[$id='terran_taskforce', $reason='the player is not in space right now']"/>
+        </do_else>
       </actions>
     </cue>
 
@@ -473,6 +1374,648 @@
       </actions>
     </cue>
 
+    <!-- ===== STATION SPAWNING ===============================================
+         Build a COMPLETE station in the player's sector, or in any other sector
+         chat names. One cue per station type (see the block below); they all call
+         the shared library that follows.
+
+         WHY ONE CUE PER TYPE, and why the sector is the argument:
+         a command carries exactly ONE string to MD (the ui lua ';'-joins the arg
+         values into event.param3) and MD has NO string operations at all — no
+         split, no substring (verified: the `string` datatype in scriptproperties.xml
+         has a single property). So of the two things a station spawn needs — WHICH
+         station and WHERE — only one can be the argument. Station types are few and
+         fixed, sectors are 155+, so the TYPE is encoded in the command id (= the
+         cue's `control`, one cue each) and the SECTOR travels as the argument, as a
+         macro NAME string the bridge resolved from chat text ("argon prime" ->
+         "Cluster_14_Sector001_macro", see bridge/twitch_bridge/sectors.py). MD turns
+         that back into a macro with macro.{$name}, the same idiom !buy ship uses.
+         An empty/absent argument means "the player's current sector".
+
+         All of create_station's shape is verbatim from the base game — see
+         md/scenario_advanced.xml (Scenario2_SetupStations), md/story_paranid.xml and
+         md/x4ep1_mentor_subscription.xml: `macro` is the station BASE hull,
+         `constructionplan` is a plan id from libraries/constructionplans.xml, and
+         state="componentstate.operational" makes it arrive fully built instead of as
+         an empty construction site. -->
+
+    <cue name="Twitch_OnStationTradeStation" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_station_tradestation'" comment="2-arg form: param2=sector macro, param3=owner word"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_SpawnStation">
+          <param name="CmdId" value="'station_tradestation'"/>
+          <param name="Plan" value="'arg_tradestation'"/>
+          <param name="Base" value="macro.station_arg_tradestation_base_01_macro"/>
+          <param name="Label" value="'Trading Station'"/>
+          <param name="SectorMacro" value="@event.param2"/>
+          <param name="OwnerWord" value="@event.param3"/>
+        </run_actions>
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnStationWharf" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_station_wharf'" comment="2-arg form: param2=sector macro, param3=owner word"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_SpawnStation">
+          <param name="CmdId" value="'station_wharf'"/>
+          <param name="Plan" value="'arg_wharf'"/>
+          <param name="Label" value="'Wharf'"/>
+          <param name="SectorMacro" value="@event.param2"/>
+          <param name="OwnerWord" value="@event.param3"/>
+        </run_actions>
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnStationShipyard" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_station_shipyard'" comment="2-arg form: param2=sector macro, param3=owner word"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_SpawnStation">
+          <param name="CmdId" value="'station_shipyard'"/>
+          <param name="Plan" value="'arg_shipyard'"/>
+          <param name="Label" value="'Shipyard'"/>
+          <param name="SectorMacro" value="@event.param2"/>
+          <param name="OwnerWord" value="@event.param3"/>
+        </run_actions>
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnStationEquipmentDock" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_station_equipmentdock'" comment="2-arg form: param2=sector macro, param3=owner word"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_SpawnStation">
+          <param name="CmdId" value="'station_equipmentdock'"/>
+          <param name="Plan" value="'arg_equipmentdock'"/>
+          <param name="Label" value="'Equipment Dock'"/>
+          <param name="SectorMacro" value="@event.param2"/>
+          <param name="OwnerWord" value="@event.param3"/>
+        </run_actions>
+      </actions>
+    </cue>
+
+    <cue name="Twitch_OnStationDefence" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_station_defence'" comment="2-arg form: param2=sector macro, param3=owner word"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_SpawnStation">
+          <param name="CmdId" value="'station_defence'"/>
+          <param name="Plan" value="'arg_defence'"/>
+          <!-- NO Base override: the library default, station_gen_factory_base_01_macro,
+               is what the base game itself pairs with the 'arg_defence' plan
+               (md/scenario_tutorials.xml). This used to say
+               station_arg_defence_base_01_macro, which LOOKS right and is not vanilla
+               at all — it comes from an installed third-party mod (faction_fix_pack),
+               so the lookup failed at load: "Property lookup failed: macro.
+               station_arg_defence_base_01_macro". The only *_defence_base_ macro the
+               base game ships is the Xenon one. Survey macros against the base game
+               and its ego_dlc_* archives only; scanning every cat also scans whatever
+               mods happen to be installed. -->
+          <param name="Base" value="macro.station_gen_factory_base_01_macro"/>
+          <param name="Label" value="'Defence Platform'"/>
+          <param name="SectorMacro" value="@event.param2"/>
+          <param name="OwnerWord" value="@event.param3"/>
+        </run_actions>
+      </actions>
+    </cue>
+
+    <!-- Solar power plant: a working factory the player's other stations can trade
+         with. 'scenario2_spp' is the base game's own energy-cell plan. -->
+    <cue name="Twitch_OnStationSolar" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_station_solar'" comment="2-arg form: param2=sector macro, param3=owner word"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_SpawnStation">
+          <param name="CmdId" value="'station_solar'"/>
+          <param name="Plan" value="'scenario2_spp'"/>
+          <param name="Label" value="'Solar Power Plant'"/>
+          <param name="Production" value="true"/>
+          <param name="SectorMacro" value="@event.param2"/>
+          <param name="OwnerWord" value="@event.param3"/>
+        </run_actions>
+      </actions>
+    </cue>
+
+    <!-- Hostile: a pirate den owned by 'twitchfoe' (at war with the player; see
+         libraries/factions.xml). Same plan+base pairing the base game uses for the
+         Scale Plate dock in md/story_diplomacy_intro.xml. -->
+    <cue name="Twitch_OnStationPirateBase" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'station_piratebase'"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_SpawnStation">
+          <param name="CmdId" value="'station_piratebase'"/>
+          <param name="Plan" value="'gen_piratedock'"/>
+          <param name="Base" value="macro.station_gen_piratebase_base_01_macro"/>
+          <param name="Owner" value="faction.twitchfoe"/>
+          <param name="Label" value="'Raider Den'" comment="Rename already prefixes &quot;Twitch &quot;"/>
+          <param name="SectorMacro" value="@event.param3"/>
+        </run_actions>
+      </actions>
+    </cue>
+
+    <!-- Doom tier: a real Kha'ak hive. A LANDMARK station — it is a single fixed
+         macro with no construction plan and no control posts, so it is created with
+         Plan=null (mirrors md/khaak_activity.xml, which spawns the same macro). -->
+    <cue name="Twitch_OnStationKhaakHive" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'station_khaakhive'"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_SpawnStation">
+          <param name="CmdId" value="'station_khaakhive'"/>
+          <param name="Plan" value="null"/>
+          <param name="Base" value="macro.landmarks_kha_hive_03_macro"/>
+          <param name="Owner" value="faction.khaak"/>
+          <param name="Label" value="'Khaak Hive'" comment="no apostrophe: it would close the MD string literal"/>
+          <param name="Rename" value="false"/>
+          <param name="SectorMacro" value="@event.param3"/>
+        </run_actions>
+      </actions>
+    </cue>
+
+    <!-- The shared spawn. Resolves the target sector, picks a safe position, creates
+         the station fully built, staffs it, and announces it in chat.
+           $Plan        construction plan id string, or null for a landmark macro
+           $Base        the station base hull macro
+           $Owner       owning faction (player -> gets a manager and a paid plot)
+           $Label       chat/naming word, e.g. 'Wharf'
+           $Production  stock the default production wares (factories only)
+           $Rename      prefix the station name with "Twitch "
+           $SectorMacro sector macro NAME as a string; '' or null -> player.sector -->
+    <library name="Twitch_SpawnStation" purpose="run_actions">
+      <params>
+        <param name="Plan" default="null"/>
+        <param name="Base" default="macro.station_gen_factory_base_01_macro"/>
+        <!-- Twitch Allies own what chat builds by default; the player only gets the
+             deed when the buy explicitly asks for it (Owner=faction.player). An
+             ally-owned station still defends the sector, trades, and is friendly
+             to the player, but it is not free real estate on the player account. -->
+        <param name="Owner" default="faction.twitchally"/>
+        <param name="Label" default="'Station'"/>
+        <param name="Production" default="false"/>
+        <param name="Rename" default="true"/>
+        <param name="SectorMacro" default="''"/>
+        <!-- This cue's command id (== the cue's `control`). Only needed so a failure
+             can be attributed back to the purchase the bridge charged for. -->
+        <param name="CmdId" default="''"/>
+        <!-- Per-purchase owner override, resolved by the bridge to exactly one of
+             'player' / 'ally' (the streamer's dashboard default, or whatever the
+             viewer typed at the end of the buy line). Anything else — including the
+             empty string a fixed-owner cue sends — leaves $Owner alone, which is how
+             the Raider den and the Kha'ak hive stay un-stealable. -->
+        <param name="OwnerWord" default="''"/>
+      </params>
+      <actions>
+        <!-- ==== 0. owner: the cue's default unless this buy asked for otherwise ==== -->
+        <do_if value="$OwnerWord == 'player'">
+          <set_value name="$Owner" exact="faction.player"/>
+        </do_if>
+        <do_elseif value="$OwnerWord == 'ally'">
+          <set_value name="$Owner" exact="faction.twitchally"/>
+        </do_elseif>
+
+        <!-- ==== 1. target sector: the named one, else wherever the player is ==== -->
+        <set_value name="$Sector" exact="null"/>
+        <do_if value="$SectorMacro != null and $SectorMacro != ''">
+          <find_sector name="$Sector" macro="macro.{$SectorMacro}"/>
+        </do_if>
+        <do_if value="$Sector == null">
+          <set_value name="$Sector" exact="player.sector"/>
+        </do_if>
+
+        <do_if value="$Sector != null">
+          <!-- ==== 2. a position inside that sector =============================
+               In the player's OWN sector, ring it around the player so it is
+               actually visible; anywhere else, a random spot in the sector core
+               (verbatim from md/factionlogic_stations.xml, GetRandomCorePosition_1:
+               core position + a random yaw at up to half the sector size, capped at
+               400km, with a small y offset). -->
+          <set_value name="$Yaw" min="0deg" max="360deg"/>
+          <set_value name="$YOffset" min="-5km" max="5km"/>
+          <set_value name="$Anchor" exact="null"/>
+          <do_if value="$Sector == player.sector">
+            <do_if value="player.occupiedship.exists">
+              <create_position name="$Anchor" object="player.occupiedship" space="$Sector"/>
+            </do_if>
+            <do_elseif value="player.entity.exists">
+              <create_position name="$Anchor" object="player.entity" space="$Sector"/>
+            </do_elseif>
+          </do_if>
+          <do_if value="$Anchor != null">
+            <set_value name="$Range" min="25km" max="45km"/>
+          </do_if>
+          <do_else>
+            <set_value name="$Anchor" exact="$Sector.coreposition"/>
+            <set_value name="$Range" max="[$Sector.size / 2.0f, 400km].min"/>
+          </do_else>
+          <set_value name="$Pos" exact="position.[$Anchor.x + (sin($Yaw) * $Range), $Anchor.y + $YOffset, $Anchor.z + (cos($Yaw) * $Range)]"/>
+
+          <!-- ==== 3. create it, complete =======================================
+               Landmark stations (Kha'ak hive) have no construction plan, so the two
+               branches differ only in whether `constructionplan` is passed at all. -->
+          <set_value name="$Station" exact="null"/>
+          <do_if value="$Plan != null">
+            <create_station name="$Station" macro="$Base" constructionplan="$Plan" owner="$Owner" sector="$Sector" state="componentstate.operational">
+              <safepos value="$Pos" allowyaxis="false" includeplotbox="true"/>
+            </create_station>
+          </do_if>
+          <do_else>
+            <create_station name="$Station" macro="$Base" owner="$Owner" sector="$Sector" state="componentstate.operational">
+              <safepos value="$Pos" allowyaxis="false" includeplotbox="true"/>
+            </create_station>
+          </do_else>
+
+          <do_if value="$Station != null">
+            <!-- ==== 4. staff it ===============================================
+                 A PLAYER-owned station is staffed here, by hand, because the base
+                 game's InitStation cue deliberately skips it (inituniverse.xml:
+                 `do_if $controllable.owner != faction.player`) and staffs player
+                 stations from event_player_built_station instead — which an
+                 MD-created station never fires. Mirrors that cue: defence, engineer,
+                 an AI unit; plus the manager the player would normally assign.
+                 An NPC-owned station gets NOTHING here on purpose. Creating a
+                 manager ourselves used to POISON the base game's own setup:
+                 CreateTradeManagerEntity is guarded by `not $controllable.tradenpc
+                 .exists`, so our manager (created first — signal_objects is queued,
+                 our actions are not) made it skip, and the trader's corner stayed
+                 empty. -->
+            <do_if value="$Owner == faction.player">
+              <do_if value="$Plan != null">
+                <create_control_entity object="$Station" post="controlpost.manager">
+                  <select faction="$Station.owner" tags="controlpost.manager.tag"/>
+                  <owner exact="$Station.owner"/>
+                </create_control_entity>
+              </do_if>
+              <create_control_entity object="$Station" post="controlpost.defence">
+                <select tags="controlpost.defence.tag"/>
+                <owner exact="$Station.owner"/>
+              </create_control_entity>
+              <create_control_entity object="$Station" post="controlpost.engineer">
+                <select tags="controlpost.engineer.tag"/>
+                <owner exact="$Station.owner"/>
+              </create_control_entity>
+              <create_ai_unit object="$Station"/>
+            </do_if>
+
+            <!-- 'init station' IS the base game's station setup, and for a non-player
+                 owner it does everything we were doing badly by hand: workforce, trade
+                 wares, ammo, the defence and engineer NPCs, and — the point of this —
+                 the SHIP DEALER and the TRADE MANAGER who stand at the dealership and
+                 the trader's corner (inituniverse.xml, InitStationActions).
+
+                 param3 = "this station arrived COMPLETE" (the flag's name is
+                 `$gamestartstation`, but its meaning is 'was created whole rather than
+                 built over time'). It gates the workforce block, so with `false` the
+                 station had NOBODY WORKING THERE — no population, ever.
+                 finalisestations.xml, the base game's own build-it-complete path,
+                 passes `true` here for exactly this reason: "Allow the station to be
+                 set up with rooms, resources and the such". factionlogic passes false
+                 only because ITS stations are constructed slowly and hire as they go. -->
+            <signal_objects object="player.galaxy" param="'init station'" param2="$Station" param3="true"/>
+            <do_if value="$Production">
+              <add_default_production_wares object="$Station" lowerlimit="10" upperlimit="10"/>
+            </do_if>
+
+            <!-- ==== 4b. kickstart stock =======================================
+                 A dock does not conjure equipment — it BUILDS it, from components
+                 its owner's equipment traders haul in (libraries/jobs.xml). Those
+                 traders take a while to spawn and make their first run, so a station
+                 that pops into existence has nothing on the shelf and nothing in the
+                 hopper until they arrive. This seeds a starter supply so it is
+                 useful immediately, and the traders take over from there.
+
+                 Sized off the station's OWN free capacity for each ware rather than
+                 a flat number: a defence platform and a shipyard have wildly
+                 different holds, and `.cargo.{$ware}.free` is already 0 for anything
+                 the station cannot store, so the wrong wares cost nothing. A quarter
+                 of free space, capped at 1500 units — deliberately a kickstart and
+                 not a free economy.
+
+                 Only for docks that build or equip ships; a solar plant makes its
+                 own product and a defence platform sells nothing. -->
+            <do_if value="$Station.canbuildships or $Station.canequipships">
+              <!-- Ship hulls need the first two; everything after is what the
+                   equipment basket carries (libraries/baskets.xml) plus the common
+                   high-tech inputs. Every id verified against libraries/wares.xml —
+                   an unknown `ware.x` is a load error, not a silent skip. -->
+              <set_value name="$Kick" exact="[ware.energycells, ware.hullparts,
+                ware.advancedcomposites, ware.advancedelectronics, ware.antimattercells,
+                ware.antimatterconverters, ware.claytronics, ware.dronecomponents,
+                ware.engineparts, ware.fieldcoils, ware.graphene, ware.microchips,
+                ware.missilecomponents, ware.plasmaconductors, ware.quantumtubes,
+                ware.scanningarrays, ware.shieldcomponents, ware.smartchips,
+                ware.superfluidcoolant, ware.turretcomponents, ware.weaponcomponents]"/>
+              <set_value name="$Seeded" exact="0"/>
+              <do_all exact="$Kick.count" counter="$k">
+                <set_value name="$w" exact="$Kick.{$k}"/>
+                <!-- `@` yields null for a ware this station has no room for; guard with
+                     `== null`, never `?` — set_value DEFINES the variable either way. -->
+                <set_value name="$free" exact="@$Station.cargo.{$w}.free"/>
+                <do_if value="$free == null">
+                  <set_value name="$free" exact="0"/>
+                </do_if>
+                <set_value name="$give" exact="[$free / 4, 1500].min"/>
+                <do_if value="$give gt 0">
+                  <add_wares object="$Station" ware="$w" exact="$give"/>
+                  <set_value name="$Seeded" exact="$Seeded + 1"/>
+                </do_if>
+              </do_all>
+              <debug_text text="'[Twitch] kickstart: seeded %s of %s wares on %s'.[$Seeded, $Kick.count, $Label]" filter="general"/>
+              <remove_value name="$Kick"/>
+              <remove_value name="$Seeded"/>
+            </do_if>
+            <do_if value="$Owner == faction.player and $Station.buildplot.exists and not $Station.paidbuildplot.exists">
+              <set_value name="$Plot" exact="$Station.buildplot.max"/>
+              <set_build_plot object="$Station" paid="true" x="$Plot.x" y="$Plot.y" z="$Plot.z"/>
+              <remove_value name="$Plot"/>
+            </do_if>
+            <do_if value="$Rename">
+              <set_object_name object="$Station" name="'Twitch %s'.[$Label]"/>
+            </do_if>
+
+            <!-- ==== 5. make it findable + announce ============================ -->
+            <set_known object="$Station" known="true"/>
+            <set_known object="$Sector" known="true"/>
+            <set_known object="$Sector.cluster" known="true"/>
+            <debug_text text="'[Twitch] station spawned: %s in %s (owner %s)'.[$Label, $Sector.knownname, $Owner.name]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Say"
+              param="'A ' + $Label + ' has been built in ' + $Sector.knownname + ' for ' + $Owner.name + '!'"/>
+          </do_if>
+          <do_else>
+            <!-- create_station returned nothing (safepos could not find room). Report
+                 the FAILURE rather than just saying so in chat: Twitch_Fail makes the
+                 bridge give the buyer their coins back. -->
+            <debug_text text="'[Twitch] station spawn FAILED: %s in %s'.[$Label, $Sector.knownname]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Fail"
+              param="table[$id=$CmdId, $reason='no room in ' + $Sector.knownname]"/>
+          </do_else>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] station spawn skipped: no target sector'" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Fail"
+            param="table[$id=$CmdId, $reason='no target sector']"/>
+        </do_else>
+      </actions>
+    </library>
+
+    <!-- ===== STATION INTERFERENCE ==========================================
+         Chat reaches out and touches the station NEAREST the player. Two effects
+         so far: disarm (temporary, reversible) and loot (drops cargo into space).
+
+         A station is a `container`, which inherits defensible -> controllable ->
+         object -> destructible (verified in libraries/scriptproperties.xml), so
+         every object= action and every defensible/container property below is
+         legal on one. -->
+
+    <!-- Shared targeting. Sets $Station to the station physically closest to the
+         player, or null if the player's sector has none.
+         `sortbydistanceto` + multiple="false" (the default) yields the single
+         nearest match — the idiom base-game md/gmc_supervised_mining.xml uses
+         (`find_station space="$Probe.sector" sortbydistanceto="$Probe"`).
+         Scope is deliberately player.sector: "closest" should mean something the
+         player can actually see happen, not a station five jumps away.
+         Deliberately NOT filtered by owner either — whatever is nearest is the
+         target, player-owned or not. To spare the player's own stations, add
+         `<match owner="faction.player" negate="true"/>` inside the find.
+
+         THE RESULT MUST COME BACK VIA <return> + result=, NOT via a shared variable.
+         run_actions runs the library "in a separate context" (md.xsd's own wording),
+         so a $Station set in here is NOT visible to the calling cue. Writing
+         `<run_actions ref="..."/>` and then reading $Station in the caller silently
+         yields null — which is exactly how this first shipped, and every !buy hack
+         answered "there is no station in this sector" while parked next to one.
+         Twitch_SpawnStation never hit this because it does all its work inside the
+         library and reads nothing back. -->
+    <!-- One player ship, by ID CODE — the join key the bridge and MD share. Three
+         cues need this exact scan (adopt, abandon, watch), so it lives here once.
+
+         RESULT COMES BACK VIA <return> + result=, never a shared variable: run_actions
+         runs the library in a separate context (see Twitch_FindNearestStation below
+         for the bug that taught us). Returns null when no player ship carries the
+         code — sold, destroyed, or never ours. -->
+    <library name="Twitch_ShipByIdCode" purpose="run_actions">
+      <params>
+        <param name="Code" default="''"/>
+      </params>
+      <actions>
+        <set_value name="$Found" exact="null"/>
+        <do_if value="$Code != ''">
+          <find_ship_by_true_owner name="$Ships" faction="faction.player" space="player.galaxy"
+            multiple="true" class="[class.ship_s, class.ship_m, class.ship_l, class.ship_xl]"/>
+          <set_value name="$i" exact="1"/>
+          <set_value name="$n" exact="$Ships.count"/>
+          <do_while value="$i le $n">
+            <do_if value="$Ships.{$i}.idcode == $Code">
+              <set_value name="$Found" exact="$Ships.{$i}"/>
+              <set_value name="$i" exact="$n"/>   <!-- break: next += 1 ends the loop -->
+            </do_if>
+            <set_value name="$i" exact="$i + 1"/>
+          </do_while>
+        </do_if>
+        <return value="$Found"/>
+      </actions>
+    </library>
+
+    <library name="Twitch_FindNearestStation" purpose="run_actions">
+      <actions>
+        <set_value name="$Found" exact="null"/>
+        <do_if value="player.occupiedship.exists">
+          <set_value name="$Ref" exact="player.occupiedship"/>
+        </do_if>
+        <do_else>
+          <set_value name="$Ref" exact="player.entity"/>
+        </do_else>
+        <do_if value="$Ref.exists">
+          <find_station name="$Found" space="player.sector" sortbydistanceto="$Ref"/>
+        </do_if>
+        <return value="$Found"/>
+      </actions>
+    </library>
+
+    <!-- DISARM: silence the nearest station's guns for a while.
+         Two separate systems have to be switched off or the station still shoots:
+           * set_turrets_armed  — every turret on the station (all defence modules).
+           * set_drone_armed category="unitcategory.defence" — the defence drones it
+             would otherwise launch. Turrets and drones are independent; disarming
+             only the turrets still leaves a drone screen.
+         Both are reversible, which is the whole point — Twitch_StationRearm undoes
+         it, so a viewer can create a window, not permanently cripple a station.
+         Turret count is read back and announced so chat sees the effect landed
+         rather than just being told it did. -->
+    <cue name="Twitch_OnStationDisarm" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'station_disarm'"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_FindNearestStation" result="$Station"/>
+        <do_if value="$Station != null">
+          <set_value name="$Guns" exact="$Station.turrets.all.count"/>
+          <set_turrets_armed object="$Station" armed="false"/>
+          <set_drone_armed object="$Station" category="unitcategory.defence" armed="false"/>
+          <!-- Hand the station to the re-arm cue. `param` is ONLY valid on
+               signal_cue_instantly — the plain <signal_cue> takes neither param nor
+               delay (verified against md.xsd; vanilla never passes either). The wait
+               therefore lives in Twitch_StationRearm's own <delay>. -->
+          <signal_cue_instantly cue="Twitch_StationRearm" param="$Station"/>
+          <debug_text text="'[Twitch] disarm: %s (owner %s, %s turrets)'.[$Station.knownname, $Station.owner.name, $Guns]" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Say"
+            param="'SABOTAGE! %s (%s) has gone dark — %s turrets and its defence drones are offline for 10 minutes.'.[$Station.knownname, $Station.owner.name, $Guns]"/>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] disarm skipped: no station in player sector'" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Fail"
+            param="table[$id='station_disarm', $reason='no station in this sector']"/>
+        </do_else>
+      </actions>
+    </cue>
+
+    <!-- Re-arm, 10 minutes after the disarm that signalled us. The wait is this
+         cue's <delay>: a signalled cue captures event.param on trigger and only then
+         waits, so $Station is still the right station when the actions run (the
+         same signalled-cue-with-delay shape as Twitch_RankWatch).
+
+         WHY 600s: it is the base game's own number for this exact effect.
+         libraries/parameters.xml <controlpanel> sets the duration (in seconds) of
+         every station control-panel hack, and BOTH halves of this disarm are 600
+         there — hack_all_turrets duration="600" and hack_watchdogs (the defence
+         drones) duration="600". So a viewer buying this gets the same window the
+         player gets for slicing a turret panel by hand. For reference the rest of
+         that table: hack_radar 300; hack_storage / hack_shieldgenerators / the
+         discount hacks 600; hack_engineer / hack_production / hack_buildmodules
+         18000. The first version of this cue used 90s, which was a guess, not a
+         number from anywhere — and played far too short.
+
+         TUNING: change this <delay>, the "10 minutes" wording in the disarm cue's
+         chat line, and the catalog cooldown together. The cooldown MUST stay above
+         this delay, see below.
+
+         KNOWN LIMIT: disarming the SAME station twice inside the window leaves two
+         timers running, and the first re-arms it early. That is the safe direction
+         (a station can never be left permanently disarmed — every disarm schedules
+         exactly one re-arm, and re-arming twice is harmless). The catalog cooldown
+         is set longer than this delay so it normally cannot happen; the mod-only
+         !disarm test command has a short cooldown and CAN trigger it. -->
+    <cue name="Twitch_StationRearm" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <delay exact="600s"/>
+      <actions>
+        <set_value name="$Station" exact="event.param"/>
+        <!-- .exists, not `?`: the station may have been destroyed during the window -->
+        <do_if value="$Station.exists">
+          <set_turrets_armed object="$Station" armed="true"/>
+          <set_drone_armed object="$Station" category="unitcategory.defence" armed="true"/>
+          <debug_text text="'[Twitch] re-armed: %s'.[$Station.knownname]" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Say"
+            param="'%s is back online — its turrets are live again.'.[$Station.knownname]"/>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] re-arm skipped: station gone'" filter="general"/>
+        </do_else>
+      </actions>
+    </cue>
+
+    <!-- LOOT: hack the nearest station's storage module so it ejects its cargo as
+         containers anyone (the player included) can scoop up.
+
+         This is the game's OWN station-plunder mechanism, not a ship action pointed
+         at a station. Modelled on aiscripts/move.hack.station.storage.xml, which is
+         what order.plunder runs when a pirate robs a station:
+             find_object_component class="class.storage" + <match_any_cargo>
+             set_object_hacked object=$module duration="3min" [hacker=...]
+             signal_objects object=$station param="'cargotracking_hacked'"
+         We do the same three steps minus the ship: no approach flight, no scan
+         wait, no flee. Hacking is what makes the crates pop — the engine ejects
+         them — so there is no drop_cargo call here at all.
+
+         WHY the storage MODULE and not the station: set_object_hacked on a station
+         hacks "all content in the given build stage" (its own doc), which is a much
+         bigger hammer than intended. Vanilla targets one storage module, so we do
+         too, and only fall back to the whole station if no storage module matches.
+
+         `dropresult` is an OUTPUT lvalue: it receives the list of drops the hack
+         actually ejected, so the chat line reports what really happened instead of
+         asserting success. `match_any_cargo` is fed the station's own cargo list, so
+         we only pick a module that is actually holding something.
+
+         NO `hacker` IS PASSED ON PURPOSE. It is optional, and it is the attribution:
+         vanilla passes the robbing ship, and the station's owner reacts to whoever
+         it names. Passing `hacker="player.occupiedship"` would make the streamer take
+         the blame — faction standing hit, station turns on them — which is far more
+         than a 300-coin tier-1 buy should do. Add it there if you WANT the heat. -->
+    <cue name="Twitch_OnStationLoot" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'station_loot'"/>
+      </conditions>
+      <actions>
+        <run_actions ref="Twitch_FindNearestStation" result="$Station"/>
+        <do_if value="$Station != null">
+          <set_value name="$Wares" exact="$Station.cargo.list"/>
+          <do_if value="$Wares.count">
+            <!-- a storage module that actually holds some of what the station has -->
+            <find_object_component name="$Module" object="$Station" class="class.storage">
+              <match_any_cargo wares="$Wares"/>
+            </find_object_component>
+
+            <set_value name="$Drops" exact="null"/>
+            <set_value name="$Hit" exact="'station'"/>
+            <do_if value="$Module?">
+              <set_object_hacked object="$Module" duration="3min" dropresult="$Drops"/>
+              <set_value name="$Hit" exact="'storage module'"/>
+            </do_if>
+            <do_else>
+              <!-- no storage module matched: hack the station itself (its own doc
+                   says a station hack covers all content in the build stage) -->
+              <set_object_hacked object="$Station" duration="3min" dropresult="$Drops"/>
+            </do_else>
+
+            <!-- tell the station's cargo tracking it was robbed, exactly as
+                 move.hack.station.storage.xml does right after the hack -->
+            <signal_objects object="$Station" param="'cargotracking_hacked'"/>
+
+            <set_value name="$Crates" exact="0"/>
+            <do_if value="$Drops?">
+              <set_value name="$Crates" exact="$Drops.count"/>
+            </do_if>
+            <debug_text text="'[Twitch] loot: hacked %s on %s, %s crates ejected'.[$Hit, $Station.knownname, $Crates]" filter="general"/>
+
+            <do_if value="$Crates gt 0">
+              <signal_cue_instantly cue="Twitch_Say"
+                param="'HACKED! %s (%s) had its storage cracked open — %s cargo containers are floating free. Go get them!'.[$Station.knownname, $Station.owner.name, $Crates]"/>
+            </do_if>
+            <do_else>
+              <!-- Worded as "hack landed, nothing fell out" rather than "failed":
+                   the hack itself is applied either way, and the engine decides what
+                   (if anything) it ejects. -->
+              <signal_cue_instantly cue="Twitch_Say"
+                param="'The hack on %s went through, but its storage held — nothing broke loose.'.[$Station.knownname]"/>
+            </do_else>
+          </do_if>
+          <do_else>
+            <debug_text text="'[Twitch] loot: %s has empty cargo'.[$Station.knownname]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Say"
+              param="'%s has nothing worth stealing — its holds are empty.'.[$Station.knownname]"/>
+          </do_else>
+        </do_if>
+        <do_else>
+          <debug_text text="'[Twitch] loot skipped: no station in player sector'" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Fail"
+            param="table[$id='station_loot', $reason='no station in this sector']"/>
+        </do_else>
+      </actions>
+    </cue>
+
     <cue name="Twitch_OnSubReward" instantiate="true">
       <conditions>
         <event_ui_triggered screen="'Twitch_Integration'" control="'sub_reward'"/>
@@ -493,34 +2036,258 @@
       </actions>
     </cue>
 
+    <!-- ===== Boso Ta calls the player ("video call") =========================
+         X4 ships NO pre-rendered video (there is not one .ogv/.bik/.mp4/.webm in
+         any .cat), so a "clip" here is the game's own comm popup: the NPC is
+         LIVE-RENDERED on the cockpit monitor, lip-synced to a recorded voice
+         line, with the subtitle drawn from the same line id.
+
+         Boso Ta is the cheapest possible actor for this:
+           * he is a GLOBAL — vanilla md/setup.xml:324 does
+               md.$PersistentCharacters.$BosoTa = X4Ep1_Mentor_Subscriptions.Start.$Boron_Mentor
+             so we neither spawn nor track him;
+           * vanilla md/setup.xml:452 already tags him with the right cutscene
+               $BosoTa.$cutscenekey = table[$key = 'ShowCharacterBoron']
+             and LIB_Dialog reads that tag itself (lib_dialog.xml:97), which is
+             why no CutsceneKey is passed below;
+           * his voice-over lives in voice-l044/10201/ (1750 .ogg files — 10201 is
+             the `page` on his macro, libraries/character_macros.xml:8905).
+         He only EXISTS once the HQ mentor subscription has installed him, which
+         our start does via gamestarts.xml `<story ref="story_hq_boso" state="1"/>`.
+         On a start without it, $Boso is null and we refund instead of erroring.
+
+         LINE IDS BELOW ARE VERIFIED: every one is quoted from a vanilla
+         <speak actor="$BosoTa"> / <add_npc_line speaker="$BosoTa"> AND has a real
+         .ogg under voice-l044/10201/. Do not add a line without checking both —
+         an id with no recording plays silently, which is indistinguishable from
+         the cue not firing at all.
+
+         The caption is the line's own text, so we cannot put a viewer's name in
+         his mouth; the mood is chosen bridge-side and MD picks a random line
+         from that mood so a repeated event doesn't replay the same clip. -->
+    <cue name="Twitch_OnBosoCall" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_Integration'" control="'boso_call'"/>
+      </conditions>
+      <actions>
+        <!-- $moods is PARALLEL to $moodlines, same idiom as Twitch_OnFactionIncident:
+             only STRINGS marshal Lua->MD, so the bridge sends a mood word and we
+             resolve it by string compare. Keep $moods identical to catalog.BOSO_MOODS. -->
+        <set_value name="$moods" exact="['greet', 'praise', 'excited', 'angry', 'threat', 'worried', 'alert']"/>
+        <set_value name="$moodlines" exact="[
+          [30200010, 30292002],
+          [30220814, 30220820, 30220819],
+          [30220817, 30220811, 30220818],
+          [30202113, 30220801, 30220101],
+          [30202110, 30202114, 30220103],
+          [30220301, 30220302, 30220911],
+          [30202103, 30220810, 30220907]
+        ]"/>
+        <!-- greet   30200010 'Assistant!' / 30292002 'My assistant should arrive any minute now...'
+             praise  30220814 'Great work, assistant!' / 30220820 'I am overjoyed to have you back in one
+                     piece, assistant.' / 30220819 'You must be overjoyed!'
+             excited 30220817 'What an intriguing turn of events!' / 30220811 'Perhaps our triangular
+                     friend was in a state of crippling self-doubt?' / 30220818 'Your plan was a success...'
+             angry   30202113 'You will do no such thing. This is my laboratory!' / 30220801 'I'm very
+                     surprised at you!' / 30220101 'It feels as if my hospitality is not being reciprocated...'
+             threat  30202110 'Intruder, would you be so kind as to take two steps back so that I can
+                     enact the purge protocols?' / 30202114 'I would rather you did not.' / 30220103 warning
+             worried 30220301 'This is all getting a bit much for me.' / 30220302 'I would really rather
+                     not lose my assistant on some suicidal adventure.' / 30220911 'slightly concerned'
+             alert   30202103 'I believe we have a situation.' / 30220810 'I sense that Dal has something
+                     on his mind.' / 30220907 'The venerable Argon lady has been staring at me for hours.' -->
+        <set_value name="$mood" exact="@event.param3"/>
+        <do_if value="$mood == null">
+          <set_value name="$mood" exact="''"/>
+        </do_if>
+        <!-- indexof is 0 for "not in the list" (vanilla idiom, cf. Twitch_EnforceRaiderWar),
+             which covers both an empty mood and a typo in chat. Rather than picking
+             at random, ADVANCE THROUGH THE MOODS in order: `!boso` with no argument
+             is the test command, and a random pick can show the same mood three
+             times running, which reads as "it only has one clip". Cycling means N
+             presses demo N different moods.
+             static.$… is the cue's non-instance storage, so the counter survives
+             each instance of this cue (vanilla idiom, ~20 uses incl. Notifications
+             static.$lasttime). It is null until the first write, hence the guard —
+             and it is compared to null, never tested with `?`, which would be true
+             the moment @ defines it. -->
+        <!-- 'random' is NOT one of $moods: it draws from the whole of Boso Ta's
+             recorded output rather than a hand-picked mood. The pool is every id on
+             his TextDB page 10201 at 99901+ that has a real .ogg — 1263 lines,
+             generated into md/twitch_boso_lines.xml by tools/gen_boso_lines.py.
+             It lives in MD, not in the bridge, because a line id can only ever be
+             chosen here: numbers do not marshal Lua->MD and MD cannot turn the
+             string it does receive into one. So the bridge says "random" and MD
+             does the picking. Checked BEFORE the indexof below, which would
+             otherwise read the unknown word as "cycle to the next mood". -->
+        <do_if value="$mood == 'random'">
+          <run_actions ref="md.Twitch_BosoLines.RandomLine" result="$line"/>
+          <set_value name="$moodname" exact="'random'"/>
+        </do_if>
+        <do_else>
+          <set_value name="$idx" exact="$moods.indexof.{$mood}"/>
+          <do_if value="$idx == 0">
+            <set_value name="$idx" exact="@static.$BosoCycle"/>
+            <do_if value="$idx == null">
+              <set_value name="$idx" exact="0"/>
+            </do_if>
+            <set_value name="$idx" exact="$idx + 1"/>
+            <do_if value="$idx gt $moods.count">
+              <set_value name="$idx" exact="1"/>
+            </do_if>
+            <set_value name="static.$BosoCycle" exact="$idx"/>
+          </do_if>
+          <set_value name="$moodname" exact="$moods.{$idx}"/>
+          <set_value name="$line" exact="$moodlines.{$idx}.random"/>
+        </do_else>
+        <debug_text text="'[Twitch] boso_call queued mood=%s line=%s'.[$moodname, $line]" filter="general"/>
+        <!-- Hand the call to the pump rather than playing it here. $expires is a
+             WALL-CLOCK deadline, not a retry count: several queued calls mean
+             several pump loops all looking at the same head job, so a per-pass
+             counter would run down N times faster the more calls were waiting and
+             give up in a minute instead of fifteen. -->
+        <do_if value="@Twitch_BosoQueue.$pending == null">
+          <set_value name="Twitch_BosoQueue.$pending" exact="[]"/>
+        </do_if>
+        <append_to_list name="Twitch_BosoQueue.$pending"
+          exact="table[$mood=$moodname, $line=$line, $expires=player.age + 15min]"/>
+        <signal_cue cue="Twitch_BosoPump"/>
+      </actions>
+    </cue>
+
+    <!-- Storage for the pending-call queue, and nothing else.
+         It is a cue purely because MD variables have to live ON one, and it is a
+         TOP-LEVEL cue with no conditions (so it activates once on load) because
+         `Twitch_BosoQueue.$pending` then names exactly one list from anywhere.
+         Writers create the list if it is missing, so nothing depends on this cue
+         having run first. -->
+    <cue name="Twitch_BosoQueue">
+      <actions>
+        <set_value name="$pending" exact="[]"/>
+      </actions>
+    </cue>
+
+    <!-- HOLD EACH CALL UNTIL THE GAME CAN ACTUALLY SHOW IT.
+         WHY A SIGNALLED LOOP AND NOT A POLLED CONDITION: the obvious shape for this
+         is a cue whose <conditions> are bare <check_value>s, which the engine polls
+         until they come true. That is legal for a normal cue and is what vanilla's
+         own Boso call uses — but NOT inside an instantiated cue's subtree. Written
+         as a sub-cue of Twitch_OnBosoCall (instantiate="true") the game rejected it
+         at load with
+             twitch_integration.xml(1944): Found non-event condition 'check_value',
+             event condition required!
+         and since a rejected cue is simply absent, every call queued into nothing:
+         x4debug showed "boso_call queued mood=random line=30222178" and then silence.
+         So the wait is an EVENT cue that re-signals itself, exactly like
+         Twitch_RetryRead above — the one retry idiom already proven in this file.
+
+         Both blockers resolve on their own, which is why waiting beats refunding:
+           * Boso Ta may not have been installed by the HQ mentor yet;
+           * the player may be mid-conversation, in a fullscreen menu or in
+             screenshot mode — vanilla's own guard before a Boso call
+             (story_paranid.xml:14344). Firing anyway swallows the cutscene.
+
+         One instance is signalled per queued call and each pass takes at most one
+         entry, so the loop count tracks the queue and drains to nothing: an instance
+         that finds the queue empty just ends. -->
+    <cue name="Twitch_BosoPump" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <!-- Doubles as the retry interval and as the gap between two queued calls, so
+           a backlog comes out as a sequence rather than one garbled overlap. -->
+      <delay min="3s" max="7s"/>
+      <actions>
+        <do_if value="@Twitch_BosoQueue.$pending == null">
+          <set_value name="Twitch_BosoQueue.$pending" exact="[]"/>
+        </do_if>
+        <do_if value="Twitch_BosoQueue.$pending.count">
+          <set_value name="$job" exact="Twitch_BosoQueue.$pending.{1}"/>
+          <set_value name="$Boso" exact="@md.$PersistentCharacters.$BosoTa"/>
+          <do_if value="$Boso == null or player.isinconversation or player.isinfullscreenmenu or player.isscreenshotmode">
+            <!-- Not now. Leave the job at the head of the queue and come back.
+                 The 15min deadline set at dispatch is the long-stop: far longer than
+                 any menu visit, so reaching it means the wait is never going to clear
+                 rather than that the player was slow. Dropping the call silently
+                 would be the one outcome worse than a refund. -->
+            <do_if value="player.age gt $job.$expires">
+              <debug_text text="'[Twitch] boso_call: gave up waiting (mood=%s)'.[$job.$mood]" filter="general"/>
+              <remove_value name="Twitch_BosoQueue.$pending.{1}"/>
+              <signal_cue_instantly cue="Twitch_Fail"
+                param="table[$id='boso_call', $reason='Boso Ta never became reachable']"/>
+            </do_if>
+          </do_if>
+          <do_else>
+            <remove_value name="Twitch_BosoQueue.$pending.{1}"/>
+            <!-- Announce only now, when it is actually happening. Announcing at
+                 dispatch would print "Boso Ta is calling" into chat while the player
+                 is still in a menu and nothing is on screen. -->
+            <signal_cue_instantly cue="Twitch_Say"
+              param="'Boso Ta is calling: ' + $job.$mood + ' (line ' + $job.$line + ')'"/>
+            <!-- ForceCutscene=true maps to LIB_Dialog's $ignoredistance: use the monitor
+                 cutscene even when Boso happens to be near the player. Without it, a
+                 player standing on the HQ gets audio and no picture — the one thing this
+                 whole feature is for. IsInMission=false because we are not a mission
+                 (vanilla passes false the same way, e.g. story_paranid.xml:1142).
+                 Lines is a list-of-lines, each line itself [id, delay, signalcue]. -->
+            <run_actions ref="md.LIB_Dialog.Speak_Actor_Run">
+              <param name="Actor" value="$Boso"/>
+              <param name="Lines" value="[[$job.$line]]"/>
+              <param name="ForceCutscene" value="true"/>
+              <param name="IsInMission" value="false"/>
+              <param name="EndSignalCue" value="null"/>
+            </run_actions>
+          </do_else>
+          <!-- Anything still queued (this job retrying, or the next one) needs
+               another pass. signal_cue, not signal_cue_instantly: the 3-7s delay
+               lives on this cue and only a queued signal waits for it — firing
+               instantly would spin. -->
+          <do_if value="Twitch_BosoQueue.$pending.count">
+            <signal_cue cue="Twitch_BosoPump"/>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+
     <!-- NPC Faction Incident: shift the standing between two NPC factions using the
-         game's own diplomacy hook (add_faction_relation, verified against
-         md/diplomacy.xml). The two factions come from the !buy args
-         (event.param3.$args.$faction1 / $faction2, passed as a table by the ui lua);
-         if omitted or not recognised, two random distinct factions are chosen.
+         game's own diplomacy hook (set_faction_relation — see the note at the write
+         itself for why not add_). The two factions come from the !buy args: the ui lua
+         ';'-joins the arg VALUES, so event.param3 is "" / "argon" / "argon;paranid".
+         The bridge (economy._canon_args) has already lowercased/alias-resolved and
+         de-duplicated them, so anything arriving here is either empty or an exact
+         key below. Omitted sides are filled with random factions.
          Sours their relation by 0.10..0.20 so repeated incidents can flip neutrals
-         toward war. The $byKey map + $factions list MIRROR the faction keys listed
-         in bridge catalog.py (faction_incident description). -->
+         toward war. The $keys list MIRRORS catalog.FACTION_KEYS in the bridge —
+         MD matches by string, so the two lists must stay identical. -->
     <cue name="Twitch_OnFactionIncident" instantiate="true">
       <conditions>
         <event_ui_triggered screen="'Twitch_Integration'" control="'faction_incident'"/>
       </conditions>
       <actions>
-        <set_value name="$factions" exact="[faction.argon, faction.antigone, faction.hatikvah, faction.teladi, faction.ministry, faction.paranid, faction.holyorder, faction.trinity, faction.alliance, faction.terran, faction.pioneers, faction.boron, faction.split, faction.freesplit]"/>
+        <set_value name="$factions" exact="[faction.argon, faction.antigone, faction.hatikvah, faction.teladi, faction.ministry, faction.paranid, faction.holyorder, faction.trinity, faction.alliance, faction.terran, faction.pioneers, faction.boron, faction.split, faction.freesplit, faction.twitchally]"/>
         <!-- The ui lua sends a ';'-joined STRING (e.g. "argon;paranid" or "argon").
              Only STRINGS marshal Lua->MD (tables arrive NOTABLE, numbers are dropped —
              verified via tools/x4_probe.py). $keys is PARALLEL to $factions; resolve
              by string comparison / .indexof. -->
-        <set_value name="$keys" exact="['argon', 'antigone', 'hatikvah', 'teladi', 'ministry', 'paranid', 'holyorder', 'trinity', 'alliance', 'terran', 'pioneers', 'boron', 'split', 'freesplit']"/>
+        <set_value name="$keys" exact="['argon', 'antigone', 'hatikvah', 'teladi', 'ministry', 'paranid', 'holyorder', 'trinity', 'alliance', 'terran', 'pioneers', 'boron', 'split', 'freesplit', 'twitchally']"/>
         <set_value name="$in" exact="@event.param3"/>
-        <do_if value="not $in?">
+        <do_if value="$in == null">
           <set_value name="$in" exact="''"/>
         </do_if>
         <!-- ALL primitives verified live via x4_probe (in arrives, count=14, list
              indexing + .name + random pick + string == all work). The ONLY thing that
              broke everything was `and` inside a do_while CONDITION — so NO `and` in any
              loop condition here; early-break is done by jumping the counters. `and` in
-             a do_if is fine (used below). -->
+             a do_if is fine (used below).
+             NULL TESTS USE `== null`, NEVER `$var?`. `?` asks "is this variable
+             DEFINED", and `<set_value exact="null"/>` DEFINES it — so `$facA?` was
+             true while $facA was null, every `not $facA?` guard below was skipped,
+             and the cue reached add_faction_relation with two nulls. That is the
+             "Relations between null and null" bug, proved by x4debug.txt:
+               Error ... Evaluated value 'null' is not of type faction
+               * Expression: $facA   * Action: <add_faction_relation>
+             with NO earlier error in the cue (so the fills never ran). Vanilla never
+             writes `?` after a null assignment; it compares to null (195 uses). -->
         <set_value name="$cnt" exact="$factions.count"/>
         <set_value name="$facA" exact="null"/>
         <set_value name="$facB" exact="null"/>
@@ -536,7 +2303,7 @@
 
         <!-- TWO named factions "keyI;keyJ" — only when not a single match and $in is
              non-empty (so single/none never run this loop). Break by jumping i,j. -->
-        <do_if value="not $facA? and $in != ''">
+        <do_if value="$facA == null and $in != ''">
           <set_value name="$i" exact="1"/>
           <do_while value="$i le $cnt">
             <set_value name="$j" exact="1"/>
@@ -554,25 +2321,153 @@
         </do_if>
 
         <!-- fill unset sides with random factions (random pick verified working). -->
-        <do_if value="not $facA?">
+        <do_if value="$facA == null">
           <set_value name="$r" min="1" max="$factions.count"/>
           <set_value name="$facA" exact="$factions.{$r}"/>
         </do_if>
-        <do_if value="not $facB?">
+        <do_if value="$facB == null">
+          <!-- Prefer a partner whose relation ISN'T story-locked: vanilla diplomacy.xml
+               sets <set_faction_diplomacy_exclusion> on integrated pairs (argon/antigone,
+               teladi/ministry, paranid/holyorder, trinity/*), and a random incident
+               between those reads as "nothing happened". 20 tries, then take anything
+               different — bounded so the loop can never spin. NO `and` in a do_while
+               condition (it broke the whole cue once); nest do_ifs instead. -->
           <set_value name="$facB" exact="$facA"/>
+          <set_value name="$try" exact="0"/>
+          <do_while value="$try lt 20">
+            <set_value name="$r" min="1" max="$cnt"/>
+            <set_value name="$cand" exact="$factions.{$r}"/>
+            <do_if value="$cand != $facA">
+              <do_if value="not $facA.isdiplomacyexcluded.{$cand}">
+                <set_value name="$facB" exact="$cand"/>
+                <set_value name="$try" exact="99"/>
+              </do_if>
+            </do_if>
+            <set_value name="$try" exact="$try + 1"/>
+          </do_while>
           <do_while value="$facB == $facA">
-            <set_value name="$r" min="1" max="$factions.count"/>
+            <set_value name="$r" min="1" max="$cnt"/>
             <set_value name="$facB" exact="$factions.{$r}"/>
           </do_while>
         </do_if>
 
-        <!-- sour their standing (game diplomacy system) -->
-        <set_value name="$pct" min="10" max="20"/>
-        <set_value name="$delta" exact="-$pct / 100.0"/>
-        <add_faction_relation faction="$facA" otherfaction="$facB" value="$delta"/>
-        <debug_text text="'[Twitch] incident: %s vs %s (%s)'.[$facA.name, $facB.name, $delta]" filter="general"/>
-        <signal_cue_instantly cue="Twitch_Say"
-          param="'Diplomatic incident! Relations between ' + $facA.name + ' and ' + $facB.name + ' just soured.'"/>
+        <!-- Sour their standing. set_faction_relation (ABSOLUTE value), NOT
+             add_faction_relation: `reason` is use="required" on add_ (77/77 vanilla
+             calls pass one; we passed none, so the action was invalid) and add_ is
+             documented as a relation BOOST, which decays back to the default. NPC-vs-NPC
+             standing is exactly what vanilla's own diplomacy sets absolutely
+             (md/diplomacy.xml: set_faction_relation faction=$Faction1 otherfaction=
+             $Faction2 value=<outcome>), and `reason` is optional there.
+             So: read the current relation, subtract 0.10..0.20, clamp to the engine's
+             -1..1 range, write it back. Repeated incidents then really do walk a
+             neutral pair down toward war instead of decaying back. -->
+        <!-- Belt and braces: never hand a null to the relation action again. If the
+             selection somehow produced nothing, say so plainly instead of posting
+             "Relations between null and null" to chat. -->
+        <do_if value="$facA == null or $facB == null">
+          <debug_text text="'[Twitch] incident ABORTED: facA=%s facB=%s in=[%s]'.[$facA, $facB, $in]" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Say"
+            param="'The diplomatic incident fizzled — no factions could be selected.'"/>
+        </do_if>
+        <do_else>
+          <set_value name="$pct" min="10" max="20"/>
+          <set_value name="$delta" exact="-$pct / 100.0"/>
+          <set_value name="$was" exact="$facA.relationto.{$facB}"/>
+          <set_value name="$now" exact="$was + $delta"/>
+          <do_if value="$now lt -1.0">
+            <set_value name="$now" exact="-1.0"/>
+          </do_if>
+          <set_faction_relation faction="$facA" otherfaction="$facB" value="$now"/>
+          <debug_text text="'[Twitch] incident: %s vs %s (%s: %s -> %s)'.[$facA.name, $facB.name, $delta, $was, $now]" filter="general"/>
+          <!-- format-string form (not `+`) because $now is a FLOAT; %s renders it safely. -->
+          <signal_cue_instantly cue="Twitch_Say"
+            param="'Diplomatic incident! Relations between %s and %s just soured (now %s).'.[$facA.name, $facB.name, $now]"/>
+        </do_else>
+      </actions>
+    </cue>
+
+    <!-- TWITCH FACTION STANCE — the heavy version of the incident. Instead of
+         nudging a relation, it SETS the Twitch Allies' standing with one NPC faction
+         to a named band: ally, neutral or war.
+
+         BANDS, NOT NUMBERS. The value comes from the target faction's own
+         `relation.<range>.mid`, the same properties vanilla uses (md/diplomacy.xml
+         writes `value="$Faction.relation.kill.min"` / `.dock.min`). A hardcoded
+         -0.5 would be "war" for one faction and merely rude to another; asking the
+         faction for the middle of its own kill band is what actually makes it shoot.
+         `.mid` rather than `.min`/`.max` on purpose — scriptproperties.xml notes the
+         bounds are EXCLUSIVE for some ranges ('neutral' excludes both, 'dock'
+         excludes its min), so only the midpoint is guaranteed inside every band.
+
+         TWO ARGS, so this listens on its own screen with no `control` filter and
+         reads them straight out of the event (see Twitch_OnAdoptShip for why MD
+         cannot split a joined string):
+             event.param2 = faction key ('paranid')   event.param3 = 'ally'|'neutral'|'war'
+         Both are canonicalised bridge-side, so anything arriving here is exact.
+         $keys/$factions are duplicated from the incident cue deliberately — the
+         alternative is a run_actions library, and a library CANNOT hand a list back
+         to a cue that also needs it for its own loops. tools/test_md_sync.py checks
+         EVERY copy against catalog.FACTION_KEYS, so the two cannot drift in silence. -->
+    <cue name="Twitch_OnFactionStance" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'Twitch_faction_stance'"/>
+      </conditions>
+      <actions>
+        <set_value name="$Key" exact="@event.param2"/>
+        <set_value name="$Stance" exact="@event.param3"/>
+        <set_value name="$factions" exact="[faction.argon, faction.antigone, faction.hatikvah, faction.teladi, faction.ministry, faction.paranid, faction.holyorder, faction.trinity, faction.alliance, faction.terran, faction.pioneers, faction.boron, faction.split, faction.freesplit, faction.twitchally]"/>
+        <set_value name="$keys" exact="['argon', 'antigone', 'hatikvah', 'teladi', 'ministry', 'paranid', 'holyorder', 'trinity', 'alliance', 'terran', 'pioneers', 'boron', 'split', 'freesplit', 'twitchally']"/>
+        <set_value name="$Other" exact="null"/>
+        <do_if value="$Key != null">
+          <set_value name="$i" exact="1"/>
+          <set_value name="$n" exact="$keys.count"/>
+          <do_while value="$i le $n">
+            <do_if value="$Key == $keys.{$i}">
+              <set_value name="$Other" exact="$factions.{$i}"/>
+              <set_value name="$i" exact="$n"/>   <!-- break: next += 1 ends the loop -->
+            </do_if>
+            <set_value name="$i" exact="$i + 1"/>
+          </do_while>
+        </do_if>
+
+        <do_if value="$Other == null or $Stance == null">
+          <debug_text text="'[Twitch] stance: unknown faction/stance (%s / %s)'.[$Key, $Stance]" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Fail"
+            param="table[$id='faction_stance', $ref=$Key, $reason='that faction could not be found']"/>
+        </do_if>
+        <do_else>
+          <set_value name="$Val" exact="null"/>
+          <set_value name="$Word" exact="''"/>
+          <do_if value="$Stance == 'ally'">
+            <set_value name="$Val" exact="$Other.relation.ally.mid"/>
+            <set_value name="$Word" exact="'allied with'"/>
+          </do_if>
+          <do_elseif value="$Stance == 'neutral'">
+            <set_value name="$Val" exact="$Other.relation.neutral.mid"/>
+            <set_value name="$Word" exact="'neutral towards'"/>
+          </do_elseif>
+          <do_elseif value="$Stance == 'war'">
+            <set_value name="$Val" exact="$Other.relation.kill.mid"/>
+            <set_value name="$Word" exact="'AT WAR with'"/>
+          </do_elseif>
+
+          <do_if value="$Val == null">
+            <signal_cue_instantly cue="Twitch_Fail"
+              param="table[$id='faction_stance', $ref=$Key, $reason='unknown stance']"/>
+          </do_if>
+          <do_elseif value="faction.twitchally.isrelationlocked">
+            <!-- Nothing we write would stick; say so rather than charging for a no-op. -->
+            <signal_cue_instantly cue="Twitch_Fail"
+              param="table[$id='faction_stance', $ref=$Key, $reason='Twitch Ally relations are locked']"/>
+          </do_elseif>
+          <do_else>
+            <set_faction_relation faction="faction.twitchally" otherfaction="$Other" value="$Val"/>
+            <set_value name="$now" exact="faction.twitchally.relationto.{$Other}"/>
+            <debug_text text="'[Twitch] stance: twitchally -> %s = %s (%s, now %s)'.[$Other.name, $Stance, $Val, $now]" filter="general"/>
+            <signal_cue_instantly cue="Twitch_Say"
+              param="'The Twitch Allies are now %s %s (relation %s).'.[$Word, $Other.name, $now]"/>
+          </do_else>
+        </do_else>
       </actions>
     </cue>
 
@@ -584,12 +2479,61 @@
         <event_cue_signalled/>
       </conditions>
       <actions>
-        <set_value name="$msg" exact="event.param"/>
+        <!-- BUILD STAMP — bump this string on EVERY change to this file.
+             Every outbound chat line carries it, so "is the game running my edit?"
+             is answered by reading chat instead of guessing. X4 only re-reads MD
+             scripts when a SAVE IS LOADED: copying the file into the extensions
+             folder while the game is running changes nothing, and a stale script
+             looks exactly like a broken fix. If the tag in chat isn't the one in
+             this line, the game is on an old script — load a save (or restart X4).
+             This is the ONLY place the build is written; it is deliberately in
+             Twitch_Say so no message can ever be emitted without it. -->
+        <set_value name="$Build" exact="'b26-rankwatch'"/>
+        <set_value name="$msg" exact="event.param + ' [' + $Build + ']'"/>
         <!-- Trailing '\n' frames the line for the bridge's newline-delimited reader.
              X4's pipe write does NOT add one (verified live 2026-06-09: the probe saw
              24 bytes with no newline). MD supports '\n' escapes (cf. sn_mod_support_apis
              interact_menu_api.xml: `$msg + '\n'`). -->
         <set_value name="$json" exact="'{&quot;t&quot;:&quot;say&quot;,&quot;msg&quot;:&quot;' + $msg + '&quot;}' + '\n'"/>
+        <signal_cue_instantly cue="md.Named_Pipes.Write"
+          param="table[$pipe='twitch', $msg=$json, $cue=Twitch_OnWriteResult]"/>
+      </actions>
+    </cue>
+
+    <!-- A command was received but could NOT be carried out. Signal with
+         table[$id=<the cue's control string>, $reason=<short human reason>]; the
+         bridge refunds whoever bought that action and posts the apology itself.
+
+         WHY THE BRIDGE AND NOT US: MD has no idea who the buyer is. The ui lua
+         forwards only the arg VALUES to MD — the `by` field of the command stays on
+         the bridge — so the game can name the ACTION but never the viewer. The
+         bridge matches this id against its own record of what it charged.
+
+         So do NOT also Twitch_Say on a failure path: the refund message is the
+         message, and two lines for one event just reads as a bug in chat. -->
+    <cue name="Twitch_Fail" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <actions>
+        <!-- Locals deliberately NOT named $id/$reason: those are the TABLE KEYS being
+             read here, and reusing the names for cue variables makes the two easy to
+             confuse on a later edit. -->
+        <set_value name="$FailId" exact="event.param.$id"/>
+        <set_value name="$FailReason" exact="event.param.$reason"/>
+        <!-- OPTIONAL $ref: a token identifying WHICH thing failed (an id code, ...).
+             Without it the bridge can only guess "the oldest outstanding charge for
+             this action", which is wrong for any action the game acknowledges only on
+             FAILURE: successes stay on the bridge's pending list forever, so the first
+             failure rolls back an earlier request that actually worked. Send $ref
+             whenever the cue knows what it was working on. Engine tokens only —
+             this goes straight into the JSON, which is built by concatenation. -->
+        <set_value name="$FailRef" exact="@event.param.$ref"/>
+        <do_if value="$FailRef == null">
+          <set_value name="$FailRef" exact="''"/>
+        </do_if>
+        <debug_text text="'[Twitch] command failed: %s ref=%s (%s)'.[$FailId, $FailRef, $FailReason]" filter="general"/>
+        <set_value name="$json" exact="'{&quot;t&quot;:&quot;cmdfail&quot;,&quot;id&quot;:&quot;' + $FailId + '&quot;,&quot;ref&quot;:&quot;' + $FailRef + '&quot;,&quot;reason&quot;:&quot;' + $FailReason + '&quot;}' + '\n'"/>
         <signal_cue_instantly cue="md.Named_Pipes.Write"
           param="table[$pipe='twitch', $msg=$json, $cue=Twitch_OnWriteResult]"/>
       </actions>

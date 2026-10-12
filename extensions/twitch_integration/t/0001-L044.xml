@@ -10,6 +10,19 @@
     <t id="4">Twitch Ally</t>
     <t id="5">Allied Space</t>
     <t id="6">Ally Territory</t>
+    <!-- twitchally licences. A faction can only sell restricted wares to someone
+         holding a licence of the matching type FROM THAT FACTION; twitchally offered
+         none, so nothing it stocked could ever be bought. minrelation is set so the
+         player qualifies on sight (twitchally starts allied). -->
+    <t id="21">Twitch Ally Equipment Licence</t>
+    <t id="22">Permits the purchase of standard equipment at Twitch Allies docks.</t>
+    <t id="23">Twitch Ally Military Licence</t>
+    <t id="24">Permits the purchase of military equipment at Twitch Allies docks.</t>
+    <t id="25">Twitch Ally Ship Licence</t>
+    <t id="26">Permits the purchase of ships at Twitch Allies docks.</t>
+    <t id="27">Twitch Ally Capital Licence</t>
+    <t id="28">Permits the purchase of capital ships and their equipment at Twitch Allies docks.</t>
+
     <!-- twitchfoe -->
     <t id="11">Twitch Raiders</t>
     <t id="12">Ships summoned by chat to fight against you.</t>

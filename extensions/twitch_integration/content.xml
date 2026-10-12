@@ -14,5 +14,13 @@
          date="2026-06-08"
          save="0">
   <dependency id="ws_2042901274" version="100" optional="false"/>
+  <!-- optional="true" => no error if missing/disabled; this only pins load order so
+       the DLC factions exist before libraries/factions.xml wires twitchfoe's
+       relations to them. Same pattern ego_dlc_boron uses for the other DLCs. -->
+  <dependency id="ego_dlc_split" version="100" optional="true"/>
+  <dependency id="ego_dlc_terran" version="100" optional="true"/>
+  <dependency id="ego_dlc_pirate" version="100" optional="true"/>
+  <dependency id="ego_dlc_boron" version="100" optional="true"/>
+  <dependency id="ego_dlc_timelines" version="100" optional="true"/>
   <!-- <text language="44" name="Twitch Integration" description="..."/> -->
 </content>

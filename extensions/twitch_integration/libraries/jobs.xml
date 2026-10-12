@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Equipment traders for the Twitch Allies — the economy behind their docks.
+
+  THE PROBLEM THIS SOLVES. A wharf / shipyard / equipment dock does not conjure
+  shields, engines, weapons and software out of nothing — it makes them from
+  COMPONENTS, and those components are flown in by the owning faction's equipment
+  traders. `<basket basket="equipment">` is the 11 wares that feed exactly this:
+  advancedelectronics, antimatterconverters, claytronics, dronecomponents, fieldcoils,
+  missilecomponents, shieldcomponents, smartchips, turretcomponents, weaponcomponents,
+  khaakalloy (libraries/baskets.xml). No components in storage, no equipment on the
+  shelf. Vanilla defines exactly twelve such jobs in libraries/jobs.xml — an L and an M for each economic
+  faction (argon, antigone, paranid, holyorder, teladi, ministry) — and you can watch
+  one work in x4debug.txt: `'HOP High-Tech Trader Hermes Sentinel' (job:
+  'holyorder_equipment_trader_m')`.
+
+  twitchally had none, so a station chat built listed every ship hull (those are
+  built to order) and no equipment at all (that needs components on hand). Nothing
+  was wrong with the blueprints or the licences — the shop had no raw material, and
+  nothing was ever going to bring it any.
+
+  COPIED FROM `argon_equipment_trader_m` / `_l`, with three deliberate changes:
+
+  * `buildatshipyard="false" gate="true"`. Vanilla builds its traders AT A SHIPYARD
+    OF THE OWNING FACTION. twitchally has no shipyard, so with vanilla's `true` the
+    quota could never be filled and not one trader would ever exist. `false` +
+    `gate="true"` spawns them at a gate instead — the same escape hatch the Kha'ak
+    jobs use, they have no shipyards either.
+  * `<select faction="argon" …>` picks the HULL. Ship selection by faction goes
+    through the ware <owner> lists, which name no Twitch faction — so selecting by
+    `twitchally` would find no ship. `<owner exact="twitchally">` still hands the
+    finished ship to the right faction. This is the same split our MD spawns already
+    use (an Argon hull, a Twitch owner) and it is known to work.
+  * `<location>` drops vanilla's `faction="argon" relation="ally"` filter. That
+    restricts an Argon trader to Argon-friendly space; twitchally is +1 with every
+    faction in the game (see factions.xml), so the filter would be a no-op written
+    out longhand. Galaxy-wide is the same thing, said plainly.
+
+  Quotas are deliberately well under Argon's (10 galaxy / 3 cluster / 3 sector for
+  the M): these ships are pure logistics for a handful of viewer-built stations, not
+  a full faction economy, and every one of them is a ship the player has to share
+  the sector with.
+
+  The name refs {20204,401} / {20204,301} are vanilla's own "Equipment Transport"
+  job names, reused the way this mod already reuses Argon colours and icons.
+-->
+<diff>
+  <add sel="/jobs">
+    <job id="twitchally_equipment_trader_m" name="{20204,401}">
+      <modifiers rebuild="false" commandeerable="true" />
+      <orders>
+        <order order="TradeRoutine" default="true">
+          <param name="minbuy" value="0" />
+          <param name="maxbuy" value="5" />
+          <param name="minsell" value="0" />
+          <param name="maxsell" value="5" />
+        </order>
+      </orders>
+      <basket basket="equipment" />
+      <category faction="twitchally" tags="[factionlogic, freighter, trader]" size="ship_m" />
+      <quota galaxy="6" cluster="2" />
+      <location class="galaxy" macro="xu_ep2_universe_macro" />
+      <environment buildatshipyard="false" gate="true" />
+      <ship>
+        <select faction="argon" tags="[trader, container]" size="ship_m" />
+        <loadout>
+          <quantity exact="1.0" />
+          <quality exact="0.71">
+            <variation exact="0.5" />
+          </quality>
+        </loadout>
+        <owner exact="twitchally" overridenpc="true" />
+      </ship>
+    </job>
+
+    <job id="twitchally_equipment_trader_l" name="{20204,301}">
+      <modifiers rebuild="false" commandeerable="true" />
+      <orders>
+        <order order="TradeRoutine" default="true">
+          <param name="minbuy" value="0" />
+          <param name="maxbuy" value="5" />
+          <param name="minsell" value="0" />
+          <param name="maxsell" value="5" />
+        </order>
+      </orders>
+      <basket basket="equipment" />
+      <category faction="twitchally" tags="[factionlogic, freighter, trader]" size="ship_l" />
+      <quota galaxy="2" cluster="1" />
+      <location class="galaxy" macro="xu_ep2_universe_macro" />
+      <environment buildatshipyard="false" gate="true" />
+      <ship>
+        <select faction="argon" tags="[trader, container]" size="ship_l" />
+        <loadout>
+          <quantity exact="1.0" />
+          <quality exact="0.71">
+            <variation exact="0.5" />
+          </quality>
+        </loadout>
+        <owner exact="twitchally" overridenpc="true" />
+      </ship>
+    </job>
+  </add>
+</diff>

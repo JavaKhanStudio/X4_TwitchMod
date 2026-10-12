@@ -119,12 +119,14 @@ Lib.json_decode = json_decode
 -- The ONE version-sensitive call. Emit a typed event to MD; MD catches it with
 -- <event_ui_triggered screen="'Twitch_Integration'" control="<type>"/> and reads
 -- the raw JSON line from the event param.
-local function signal_md(msgtype, rawline)
-  -- VERIFIED 3-arg form: AddUITriggeredEvent(screen, control, value); MD reads
-  -- `value` as event.param3. (cf. sn_mod_support_apis named_pipes/library.lua
-  -- L.Raise_Signal -> AddUITriggeredEvent("Named_Pipes", name, return_value).)
+local function signal_md(screen, control, value)
+  -- VERIFIED 3-arg form: AddUITriggeredEvent(screen, control, value); MD reads them
+  -- as event.param / event.param2 / event.param3 respectively (documented in
+  -- common.xsd on <event_ui_triggered>: "param = screen ID, param2 = control ID,
+  -- param3 = screen parameters"). cf. sn_mod_support_apis named_pipes/library.lua
+  -- L.Raise_Signal -> AddUITriggeredEvent("Named_Pipes", name, return_value).
   if AddUITriggeredEvent then
-    AddUITriggeredEvent("Twitch_Integration", msgtype, rawline)
+    AddUITriggeredEvent(screen, control, value)
   else
     DebugError("[Twitch] AddUITriggeredEvent unavailable; cannot signal MD")
   end
@@ -147,11 +149,44 @@ local function onDecode(_, line)
   -- AddUITriggeredEvent on our screen — tables arrive NOTABLE and NUMBERS don't come
   -- through at all (both verified live via tools/x4_probe.py). So multi-value
   -- commands send e.g. "argon;paranid"; MD matches the pair by string comparison.
+  -- ORDER: read `argv` (a JSON ARRAY, order preserved by decode_array) with ipairs.
+  -- NEVER iterate msg.args with pairs() — it is a hash table and pairs() order is
+  -- undefined, which silently SWAPPED multi-arg commands ("50;energycells").
   local vals = {}
-  if type(msg.args) == "table" then
-    for _, v in pairs(msg.args) do vals[#vals + 1] = tostring(v) end
+  if type(msg.argv) == "table" then
+    for _, v in ipairs(msg.argv) do vals[#vals + 1] = tostring(v) end
+  elseif type(msg.args) == "table" then
+    -- Fallback for lines without argv (older bridge / hand-written test lines):
+    -- sorted keys, so at least the order is deterministic instead of random.
+    local keys = {}
+    for k in pairs(msg.args) do keys[#keys + 1] = k end
+    table.sort(keys)
+    for _, k in ipairs(keys) do vals[#vals + 1] = tostring(msg.args[k]) end
   end
-  signal_md(control, table.concat(vals, ";"))
+  local payload = table.concat(vals, ";")
+  -- Log every dispatch. An event_ui_triggered with no matching cue is a SILENT
+  -- no-op in MD — which is exactly what a stale deployed mod looks like from
+  -- chat: the companion confirms the purchase, the game does nothing, and
+  -- x4debug.txt says nothing at all. With this line the log always shows the
+  -- command reaching the game, so "never arrived" and "arrived, nobody
+  -- listening" stop looking identical. (DebugError is the only log channel Lua
+  -- has; it prints under [=ERROR=] regardless of severity.)
+  DebugError("[Twitch] -> " .. tostring(control) .. " [" .. payload .. "]")
+  signal_md("Twitch_Integration", control, payload)
+
+  -- TWO-FIELD COMMANDS. MD strings support formatting and nothing else — no split,
+  -- no substring, no indexof (scriptproperties.xml, datatype "string") — so a
+  -- ';'-joined payload can NEVER be taken apart on the MD side. But the UI event
+  -- carries three independent strings, and `control` is OPTIONAL on
+  -- <event_ui_triggered> (common.xsd; vanilla ships the control-less form, e.g.
+  -- screen='DockedMenu'). So a 2-arg command ALSO goes out on a screen of its own
+  -- with the args in the control+value slots: a cue listening on that screen reads
+  -- them as event.param2 / event.param3 with no parsing at all.
+  -- The joined form above still fires, so 1-arg cues are untouched. 3+ args would
+  -- need another slot and have no consumer yet — joined-only, by design.
+  if #vals == 2 then
+    signal_md("Twitch_" .. tostring(control), vals[1], vals[2])
+  end
 end
 
 -- NOTE: in-game process spawn via FFI is NOT possible. X4 restricts dangerous
@@ -167,7 +202,7 @@ local function init()
   -- MD -> Lua: raw lines to decode.
   if RegisterEvent then RegisterEvent("Twitch.Decode", onDecode) end
   -- Tell MD we are loaded so it (re)starts the pipe read loop.
-  signal_md("reloaded", "")
+  signal_md("Twitch_Integration", "reloaded", "")
   DebugError("[Twitch] ui lua loaded")
 end
 

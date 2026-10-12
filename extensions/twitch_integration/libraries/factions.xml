@@ -7,36 +7,198 @@
   (which only place on a NEW game). Their ships come purely from our MD spawns,
   so they light up on an existing save without a new playthrough.
 
-    twitchally  -> allied with the player  (relation +1, locked)
-    twitchfoe   -> at war with the player  (relation -1, locked)  and with twitchally
+    twitchally  -> starts allied (+1) with the player and every other faction
+                   except xenon/khaak. Relations are UNLOCKED, so they drift and
+                   can be negotiated like a normal faction's.
+    twitchfoe   -> at war with the player, with twitchally, and with every
+                   other faction in the game (relation -1, locked)
 
-  Kept minimal/low-risk: reuse existing colours + icons (faction_argon /
-  faction_xenon), behaviourset="default", tags="hidden" (functional, but no
-  diplomacy-menu assets required). Relations are `locked` so diplomacy can't
-  drift them. Structure verified against the game's libraries/factions.xml
-  (khaak / civilian / ownerless).
+  VISIBILITY: these used to carry tags="hidden", which is the tag vanilla puts
+  on its non-entity factions (civilian / criminal / outlaw / smuggler / visitor /
+  ownerless / holyorderfanatic). The engine strips hidden factions out of
+  GetLibrary("factions"), which is the single source both the Encyclopedia
+  (ui/addons/ego_detailmonitor/menu_encyclopedia.lua:792) and the Diplomacy menu
+  (menu_diplomacy.lua:1188) enumerate — so they had no encyclopedia entry at all.
+  Dropped it from both. twitchfoe then mirrors how khaak/xenon stay
+  visible-but-untouchable:
+
+    nodiplomacyselection  -> cannot be picked as a diplomacy target
+    <relations locked="1">-> relations can never drift or be negotiated
+
+  twitchally gets neither of those, so its relations behave normally.
+
+  twitchfoe keeps notradeoffer/noresupply/privateloadout/privateship — it owns
+  nothing tradeable, so there is nothing to trade at, resupply from, or buy.
+  twitchally NO LONGER has them: chat can build twitchally stations (`!buy wharf`),
+  and those tags would leave a working wharf with an empty shelf. See the note on
+  the faction itself.
+
+  Deliberately NOT using the `aggressive` tag: only khaak has it and only with
+  behaviourset="khaak"; no script reads it, so it is engine behaviour we can't
+  inspect. Relation -1 to everything already makes twitchfoe universally hostile.
+
+  Reusing existing colours / icons / diplomacy banners (faction_argon,
+  faction_xenon) so no new art is needed. Structure and the exhaustive relation
+  list are copied from the vanilla khaak/xenon entries in libraries/factions.xml.
+
+  DLC faction ids (boron, terran/pioneers/yaki, split/freesplit/fallensplit/court,
+  loanshark/scavenger, kaori) are listed unconditionally. That is safe and is what
+  Egosoft itself does: ego_dlc_boron's factions.xml references Terran, Split and
+  Pirate factions while depending on those DLCs only with optional="true" (which
+  merely fixes load order). Relations to factions that aren't installed are ignored.
 -->
 <diff>
   <add sel="/factions">
     <faction id="twitchally" name="{90042,1}" description="{90042,2}" shortname="{90042,3}"
              prefixname="{90042,4}" spacename="{90042,5}" homespacename="{90042,6}"
-             primaryrace="argon" behaviourset="default" tags="hidden">
+             primaryrace="argon" behaviourset="default">
+      <!-- NO inert-faction tags. twitchally used to carry
+           `noresupply notradeoffer privateloadout privateship`, which was correct
+           while it owned nothing: those tags are what vanilla puts on factions that
+           exist only as a relation target, and they mean "makes no trade offers,
+           resupplies nobody, sells the player none of its ships or loadouts".
+           Chat can now BUILD twitchally stations (a wharf, a trading station, an
+           equipment dock), and every one of those tags would make the station a
+           decoration: docked but no trades, no restock, nothing on the shelf. The
+           tags go, so an ally station behaves like any other faction's. -->
       <color ref="faction_argon" />
-      <icon active="faction_argon" inactive="faction_argon" />
-      <relations locked="1">
+      <!-- Working capital. The equipment traders in libraries/jobs.xml BUY their
+           cargo before they can deliver it, and a faction with an empty account
+           cannot fill a single station shelf. Vanilla only writes <account> on the
+           player (NPC balances are otherwise engine-managed), so this is belt and
+           braces — harmless if the engine already funds the faction, and the
+           difference between a working dock and an empty one if it does not.
+           Must sit between <color> and <icon>: factions.xsd fixes the child order. -->
+      <account amount="50000000" />
+      <icon active="faction_argon" inactive="faction_argon" banner="diplomacy_banner_argon" />
+      <!-- LICENCES TO BUY. Equipment and ship wares carry
+           `<restriction licence="generaluseequipment|militaryequipment|generaluseship|
+           capitalship|capitalequipment">`, and a faction can only sell a restricted
+           ware to someone holding a licence of that type ISSUED BY THAT FACTION.
+           twitchally had no <licences> block at all, so it could not issue one, and
+           nothing on its shelves could ever be bought.
+
+           Every vanilla faction that owns a tradeable station has this block; the
+           ones without it (civilian, criminal, outlaw, smuggler, xenon, khaak) are
+           precisely the ones that sell nothing.
+
+           `minrelation` is what the player must reach to hold the licence.
+           twitchally starts at +1 with the player (see <relations> below), so these
+           are all granted on sight — no ceremony chain, deliberately: these docks
+           are a gift from chat, not a reputation grind. Names come from this mod's
+           own text page 90042, so nothing borrows an Argon licence's wording.
+           Ordering is fixed by factions.xsd: color, account, icon, licences,
+           relations. -->
+      <licences>
+        <licence type="generaluseequipment" name="{90042,21}" description="{90042,22}"
+                 minrelation="-0.01" tags="basic" />
+        <licence type="generaluseship" name="{90042,25}" description="{90042,26}"
+                 minrelation="-0.01" tags="basic" />
+        <licence type="militaryequipment" name="{90042,23}" description="{90042,24}"
+                 minrelation="-0.01" />
+        <licence type="capitalequipment" name="{90042,27}" description="{90042,28}"
+                 minrelation="-0.01" />
+      </licences>
+      <!-- Starts allied (+1) with the player and the whole galaxy, and unlike
+           twitchfoe the block is NOT locked and the faction is NOT
+           nodiplomacyselection: relations drift from combat/diplomacy like any
+           normal faction, and it can be picked as a diplomacy target.
+           Two deliberate exceptions to "allied with everyone":
+             xenon / khaak -> -1. They are hostile to all life in X4 and their own
+               relation blocks are locked, so an ally that ignored them would just
+               look broken escorting the player through a Xenon sector.
+             twitchfoe     -> not listed here on purpose. twitchfoe's own
+               <relations locked="1"> already pins the pair at -1; declaring the
+               same pair twice with a different lock state is ambiguous. -->
+      <relations>
         <relation faction="player" relation="1" />
-        <relation faction="twitchfoe" relation="-1" />
+        <relation faction="alliance" relation="1" />
+        <relation faction="antigone" relation="1" />
+        <relation faction="argon" relation="1" />
+        <relation faction="buccaneers" relation="1" />
+        <relation faction="civilian" relation="1" />
+        <relation faction="criminal" relation="1" />
+        <relation faction="hatikvah" relation="1" />
+        <relation faction="holyorder" relation="1" />
+        <relation faction="holyorderfanatic" relation="1" />
+        <relation faction="ministry" relation="1" />
+        <relation faction="outlaw" relation="1" />
+        <relation faction="paranid" relation="1" />
+        <relation faction="scaleplate" relation="1" />
+        <relation faction="smuggler" relation="1" />
+        <relation faction="teladi" relation="1" />
+        <relation faction="trinity" relation="1" />
+        <relation faction="visitor" relation="1" />
+        <!-- Kingdom End -->
+        <relation faction="boron" relation="1" />
+        <!-- Cradle of Humanity -->
+        <relation faction="terran" relation="1" />
+        <relation faction="pioneers" relation="1" />
+        <relation faction="yaki" relation="1" />
+        <!-- Split Vendetta -->
+        <relation faction="split" relation="1" />
+        <relation faction="freesplit" relation="1" />
+        <relation faction="fallensplit" relation="1" />
+        <relation faction="court" relation="1" />
+        <!-- Tides of Avarice -->
+        <relation faction="loanshark" relation="1" />
+        <relation faction="scavenger" relation="1" />
+        <!-- Timelines -->
+        <relation faction="kaori" relation="1" />
+        <!-- Permanently hostile to all life; see note above. -->
+        <relation faction="xenon" relation="-1" />
+        <relation faction="khaak" relation="-1" />
       </relations>
     </faction>
     <faction id="twitchfoe" name="{90042,11}" description="{90042,12}" shortname="{90042,13}"
              prefixname="{90042,14}" spacename="{90042,15}" homespacename="{90042,16}"
-             primaryrace="argon" behaviourset="default" tags="hidden">
+             primaryrace="argon" behaviourset="default"
+             tags="nobuildunits nodiplomacyselection noresupply notradeoffer privateloadout privateship">
       <color ref="faction_xenon" />
-      <icon active="faction_xenon" inactive="faction_xenon" />
+      <icon active="faction_xenon" inactive="faction_xenon" banner="diplomacy_banner_xenon" />
+      <!-- At war with the entire galaxy. Base-game factions first, then DLC. -->
       <relations locked="1">
         <relation faction="player" relation="-1" />
         <relation faction="twitchally" relation="-1" />
+        <relation faction="alliance" relation="-1" />
+        <relation faction="antigone" relation="-1" />
+        <relation faction="argon" relation="-1" />
+        <relation faction="buccaneers" relation="-1" />
+        <relation faction="civilian" relation="-1" />
+        <relation faction="criminal" relation="-1" />
+        <relation faction="hatikvah" relation="-1" />
+        <relation faction="holyorder" relation="-1" />
+        <relation faction="holyorderfanatic" relation="-1" />
+        <relation faction="khaak" relation="-1" />
+        <relation faction="ministry" relation="-1" />
+        <relation faction="outlaw" relation="-1" />
+        <relation faction="paranid" relation="-1" />
+        <relation faction="scaleplate" relation="-1" />
+        <relation faction="smuggler" relation="-1" />
+        <relation faction="teladi" relation="-1" />
+        <relation faction="trinity" relation="-1" />
+        <relation faction="visitor" relation="-1" />
+        <relation faction="xenon" relation="-1" />
+        <!-- Kingdom End -->
+        <relation faction="boron" relation="-1" />
+        <!-- Cradle of Humanity -->
+        <relation faction="terran" relation="-1" />
+        <relation faction="pioneers" relation="-1" />
+        <relation faction="yaki" relation="-1" />
+        <!-- Split Vendetta -->
+        <relation faction="split" relation="-1" />
+        <relation faction="freesplit" relation="-1" />
+        <relation faction="fallensplit" relation="-1" />
+        <relation faction="court" relation="-1" />
+        <!-- Tides of Avarice -->
+        <relation faction="loanshark" relation="-1" />
+        <relation faction="scavenger" relation="-1" />
+        <!-- Timelines -->
+        <relation faction="kaori" relation="-1" />
       </relations>
+      <signals>
+        <response signal="policehalt" response="attack" />
+      </signals>
     </faction>
   </add>
 </diff>
