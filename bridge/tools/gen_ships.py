@@ -4,7 +4,8 @@ from an X4 install's game data, so prices are REAL and macros are CORRECT.
 
     py -3 tools/gen_ships.py "E:\\Steam\\steamapps\\common\\X4 Foundations"
 
-It reads each cat/dat pair (base + every installed DLC), pulls `libraries/wares.xml`
+It reads each cat/dat pair (base + every installed DLC) and every extension's loose
+files (a loose-only mod like X4 Ship Forge's x4_shipforge), pulls `libraries/wares.xml`
 (ship price + macro) and the English text `t/0001-l044.xml` (ship names), then emits
 one row per player-buyable ship: {key, macro, label, credits, size, role}. Re-run
 after installing a DLC to pick up its ships. `ships.py` loads the result at runtime.
@@ -19,7 +20,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from x4cat import all_cats, extract, install_root
+from x4cat import game_files, install_root
 
 # ships we never offer: pure-enemy (Xenon/Kha'ak, price 0), drones, and research hulls.
 SKIP_MACRO = re.compile(r"_(xen|kha)_|transdrone|_drone_|_research_|_lasertower|_spacesuit")
@@ -95,15 +96,12 @@ def load(root: Path) -> tuple[dict[str, dict], dict[tuple[str, str], str]]:
     (page, id), for name resolution."""
     ships: dict[str, dict] = {}
     text: dict[tuple[str, str], str] = {}
-    for cat in all_cats(root):
-        w = extract(cat, "libraries/wares.xml")
-        if w:
-            for s in parse_ships(w):
-                if s["macro"]:
-                    ships[s["macro"]] = s
-        t = extract(cat, "t/0001-l044.xml")
-        if t:
-            merge_text(t, text)
+    for w in game_files(root, "libraries/wares.xml"):
+        for s in parse_ships(w):
+            if s["macro"]:
+                ships[s["macro"]] = s
+    for t in game_files(root, "t/0001-l044.xml"):
+        merge_text(t, text)
     return ships, text
 
 

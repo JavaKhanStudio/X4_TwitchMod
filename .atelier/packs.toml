@@ -60,12 +60,13 @@ order); test_md_sync checks both copies.
 After a catalog change, re-export: `python3 bridge/tools/export_catalog.py` (writes
 docs/catalog/catalog.json).
 ships.json and sectors.json are GENERATED from the X4 install (gen_ships.py, gen_sectors.py, see
-the `world` pack): never edit them by hand. Prices: adopt = credits/1200, buy = /300, resurrect =
+the `world` pack): never edit them by hand. gen_ships reads loose-file extensions too
+(x4cat.game_files), so an X4 Ship Forge ship installed in extensions/ gets a row. Prices: adopt = credits/1200, buy = /300, resurrect =
 adopt x 1.5 (fleet.py, docs/10).
 Adoptions are the bridge's truth (adoptions.json); MD is stateless about them (docs/10 §2).
 Ship NAMES never cross the wire, only engine tokens (idcode, macro): docs/10 §3.
 Tests: test_catalog, test_commands, test_economy, test_wallet, test_fleet, test_ships,
-test_sectors, test_md_sync (all stdlib, all run under WSL).
+test_gen_ships, test_sectors, test_md_sync (all stdlib, all run under WSL).
 """
 
 [tags.mod]
