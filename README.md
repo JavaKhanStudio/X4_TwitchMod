@@ -1,3 +1,5 @@
+<p align="center"><img src="icon.svg" width="128" alt="X4 Twitch Integration logo"></p>
+
 # X4 Twitch Integration Mod
 
 A from-scratch **Twitch integration mod for X4: Foundations** — a two-way bridge so Twitch

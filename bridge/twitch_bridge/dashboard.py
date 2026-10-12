@@ -24,6 +24,7 @@ PAGE = """<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>X4 ⇄ Twitch Companion</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
 <style>
   :root{--bg:#0e0f1a;--card:#181a2b;--line:#272a42;--txt:#e7e9f5;--dim:#9aa0c3;
         --tw:#9146ff;--ok:#37d67a;--warn:#f5a623;--bad:#ec5b5b;--cmd:#56b6ff;--out:#c678dd}
@@ -32,7 +33,8 @@ PAGE = """<!doctype html>
        color:var(--txt);font:14px/1.5 ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif}
   .wrap{max-width:880px;margin:0 auto;padding:22px}
   header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
-  header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.2px}
+  header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.2px;display:flex;align-items:center;gap:10px}
+  header h1 img{width:30px;height:30px}
   header .sp{flex:1}
   .pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;
         background:var(--card);border:1px solid var(--line);font-weight:600;font-size:13px}
@@ -109,7 +111,7 @@ PAGE = """<!doctype html>
   @media(max-width:680px){.grid{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
   <header>
-    <h1>🎮 X4 ⇄ Twitch Companion</h1><div class="sp"></div>
+    <h1><img src="/icon.svg" alt="">X4 ⇄ Twitch Companion</h1><div class="sp"></div>
     <button id="restart" class="rbtn" title="Restart the companion process (reloads the page when it's back)">⟳ Restart</button>
     <div class="pill"><span id="big" class="dot"></span><span id="bigt">connecting…</span></div>
   </header>
@@ -332,6 +334,11 @@ tick(); setInterval(tick,1000);
 _CATALOG_HTML = Path(__file__).resolve().parents[2] / "docs" / "catalog" / "index.html"
 
 
+# The project's mark (the board's icon, chosen on r7), served for the favicon and
+# the page headers. The published catalog carries its own copy next to its page.
+_ICON_SVG = Path(__file__).resolve().parents[2] / "icon.svg"
+
+
 def _catalog_page() -> bytes:
     try:
         return _CATALOG_HTML.read_bytes()
@@ -370,6 +377,13 @@ class _Handler(BaseHTTPRequestHandler):
             # The admin panel's viewer table (username, coins, karma, banned).
             result = self.on_admin({"action": "list"}) if self.on_admin else {"ok": False}
             self._send(200, json.dumps(result).encode(), "application/json")
+        elif self.path.endswith("/icon.svg"):
+            # Before /catalog: the catalog page asks for it relative to itself, and
+            # /catalog/icon.svg would otherwise be answered with the page.
+            try:
+                self._send(200, _ICON_SVG.read_bytes(), "image/svg+xml")
+            except OSError:
+                self._send(404, b"not found", "text/plain")
         elif self.path.startswith("/catalog"):
             self._send(200, _catalog_page(), "text/html; charset=utf-8")
         else:

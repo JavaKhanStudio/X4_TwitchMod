@@ -56,6 +56,14 @@ try:
     check("/api/status" in html, "page polls the status endpoint")
     check("/api/admin" in html and "Moderation" in html, "page has the moderation panel")
     check('id="restart"' in html and "/api/restart" in html, "page has the restart button")
+    # The mark (icon.svg at the repo root) is the favicon and the header image of both
+    # pages; the catalog asks for it relative to /catalog, so it must not be answered
+    # with the catalog page itself.
+    check('href="/icon.svg"' in html and 'src="/icon.svg"' in html, "page wears the mark")
+    for path in ("icon.svg", "catalog/icon.svg"):
+        icon = urllib.request.urlopen(d.url + path, timeout=3)
+        check(icon.status == 200 and icon.headers["Content-Type"] == "image/svg+xml"
+              and icon.read().lstrip().startswith(b"<svg"), f"GET /{path} -> the SVG mark")
     check('id="cdtoggle"' in html, "page has the disable-cooldowns checkbox")
     check('id="capstoggle"' in html, "page has the disable-purchase-limits checkbox")
 finally:
@@ -67,6 +75,11 @@ finally:
 # here we run it inline — the endpoint wiring is what we're testing).
 w = Wallet(tempfile.mktemp(suffix=".json"))
 rt = Runtime()
+
+
+root = Path(__file__).resolve().parents[2]
+check((root / "icon.svg").read_bytes() == (root / "docs/catalog/icon.svg").read_bytes(),
+      "docs/catalog/icon.svg is the same mark as icon.svg (copy it after a redraw)")
 
 
 def on_admin(body):

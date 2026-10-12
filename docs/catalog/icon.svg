@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- C: the game's X4 mark on a white panel inside a Twitch-style bubble, extruded down
+       and right like the Twitch glitch; the X holds a gold nebula with purple wisps -->
+  <defs>
+    <linearGradient id="chrome" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".35" stop-color="#9aa0aa"/>
+      <stop offset=".55" stop-color="#f2f3f5"/><stop offset=".8" stop-color="#5c616b"/>
+      <stop offset="1" stop-color="#d9dce1"/>
+    </linearGradient>
+    <radialGradient id="nebula" cx=".55" cy=".48" r=".62">
+      <stop offset="0" stop-color="#fff6c8"/><stop offset=".28" stop-color="#f2c04a"/>
+      <stop offset=".55" stop-color="#c06a18"/><stop offset=".8" stop-color="#6b2a8f"/>
+      <stop offset="1" stop-color="#22083b"/>
+    </radialGradient>
+    <filter id="wisps" x="-12" y="0" width="56" height="42" filterUnits="userSpaceOnUse">
+      <feTurbulence type="fractalNoise" baseFrequency=".11" numOctaves="4" seed="7" result="n"/>
+      <feColorMatrix in="n" values="0 0 0 0 1  0 0 0 0 .93  0 0 0 0 .72  1.6 0 0 0 -.78" result="light"/>
+      <feColorMatrix in="n" values="0 0 0 0 .62  0 0 0 0 .3  0 0 0 0 1  0 1.7 0 0 -.86" result="purple"/>
+      <feMerge><feMergeNode in="purple"/><feMergeNode in="light"/></feMerge>
+    </filter>
+    <path id="x" d="M0 0h13l8 13 8-13h13L28 20l14 22H29l-8-13-8 13H0l14-22z"/>
+    <clipPath id="xclip"><use href="#x"/></clipPath>
+  </defs>
+  <g fill="#3a1478"><path d="M8 2H58V40L48 50H26L18 58V50H2V8Z" transform="translate(3.5 3.5)"/><path d="M8 2H58V40L48 50H26L18 58V50H2V8Z" transform="translate(3 3)"/><path d="M8 2H58V40L48 50H26L18 58V50H2V8Z" transform="translate(2.5 2.5)"/><path d="M8 2H58V40L48 50H26L18 58V50H2V8Z" transform="translate(2 2)"/><path d="M8 2H58V40L48 50H26L18 58V50H2V8Z" transform="translate(1.5 1.5)"/><path d="M8 2H58V40L48 50H26L18 58V50H2V8Z" transform="translate(1 1)"/><path d="M8 2H58V40L48 50H26L18 58V50H2V8Z" transform="translate(.5 .5)"/></g>
+  <path d="M8 2H58V40L48 50H26L18 58V50H2V8Z" fill="#9146ff"/>
+  <path d="M10 6H54V38.3L46.3 46H6V10Z" fill="#ffffff"/>
+  <g transform="translate(12.9 6.5) scale(.6)">
+    <g transform="translate(6 18) skewX(-14)">
+      <g clip-path="url(#xclip)">
+        <rect x="-12" y="0" width="56" height="42" fill="url(#nebula)"/>
+        <rect x="-12" y="0" width="56" height="42" filter="url(#wisps)" opacity=".85"/>
+      </g>
+      <use href="#x" fill="none" stroke="#2a0f5c" stroke-width="5" stroke-linejoin="miter"/>
+      <use href="#x" fill="none" stroke="url(#chrome)" stroke-width="3" stroke-linejoin="miter"/>
+    </g>
+    <circle cx="50" cy="15" r="9" fill="#14141c" stroke="#2a0f5c" stroke-width="4.5"/>
+    <circle cx="50" cy="15" r="9" fill="#14141c" stroke="url(#chrome)" stroke-width="2.5"/>
+    <path d="M52.5 18.5h-6.5l6-9v12" fill="none" stroke="url(#chrome)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
+</svg>
