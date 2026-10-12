@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from twitch_bridge.catalog import CATALOG, FACTION_KEYS  # noqa: E402
+from twitch_bridge.catalog import CATALOG, FACTION_KEYS, STARTER  # noqa: E402
 from twitch_bridge.economy import COMMAND_ALIASES  # noqa: E402
 
 XML = (Path(__file__).resolve().parents[2]
@@ -81,6 +81,13 @@ for e in CATALOG:
     else:
         where = "stub cue in MD" if stub else "no MD cue yet"
         print(f"  ok : {e.id:<16} {e.status:<10} ({where})")
+
+# Chat/event Commands (STARTER) have no `status` to keep honest, so the check is
+# plainer: each action must reach a cue, and that cue must not be a TODO stub.
+# sub_reward and cheer_boost sat as debug_text placeholders for months unnoticed.
+for c in STARTER:
+    check(cues.get(c.action) is False,
+          f"command {c.id}: action '{c.action}' has a TODO-free MD cue")
 
 # Faction keys: MD matches the !buy args as literal strings, so its $keys list and
 # the parallel $factions list must both mirror catalog.FACTION_KEYS exactly. A key

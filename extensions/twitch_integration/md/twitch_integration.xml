@@ -21,7 +21,6 @@
   STILL [VERIFY] live: (a) Linux pipe-name -> socket-file mapping via the fork's
   "Pipe Prefix Linux" option; (b) whether to pass structured fields as an MD table
   via param3 instead of the raw JSON string (see Twitch_OnChat).
-  Effects below are debug log lines; real gameplay replaces the TODO markers.
 -->
 <mdscript name="Twitch_Integration" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <cues>
@@ -162,8 +161,7 @@
          The bridge applies permissions/cooldowns and sends {"t":"cmd","id":<action>,
          "by":<user>,"args":{...}}. Lua emits <action> as the `control`, so each
          action gets its own cue. event.param3 holds the raw JSON line.
-         Add a cue here whenever you add a Command to bridge/twitch_bridge/catalog.py.
-         Effects are debug_text placeholders — replace the TODOs with real gameplay. -->
+         Add a cue here whenever you add a Command to bridge/twitch_bridge/catalog.py. -->
 
     <cue name="Twitch_OnPing" instantiate="true">
       <conditions>
@@ -2045,23 +2043,61 @@
       </actions>
     </cue>
 
+    <!-- A new sub pays the player credits by sub tier. The sub event always carries
+         two args (tier, months), so the ui lua re-emits it on its own screen with
+         tier in param2: Twitch tier ids are '1000' / '2000' / '3000' (Prime is
+         '1000'). Anything unrecognised pays tier 1 rather than nothing.
+         The subscriber's name never reaches MD; the line thanks the sub anyway. -->
     <cue name="Twitch_OnSubReward" instantiate="true">
       <conditions>
-        <event_ui_triggered screen="'Twitch_Integration'" control="'sub_reward'"/>
+        <event_ui_triggered screen="'Twitch_sub_reward'"/>
       </conditions>
       <actions>
-        <debug_text text="'[Twitch] sub_reward'" filter="general"/>
-        <!-- TODO: grant a perk to the player -->
+        <set_value name="$Tiers" exact="['1000', '2000', '3000']"/>
+        <set_value name="$Pay" exact="[25000Cr, 50000Cr, 125000Cr]"/>
+        <set_value name="$Tier" exact="@event.param2"/>
+        <set_value name="$Idx" exact="$Tiers.indexof.{$Tier}"/>
+        <do_if value="$Idx == 0">
+          <set_value name="$Idx" exact="1"/>
+        </do_if>
+        <set_value name="$Credits" exact="$Pay.{$Idx}"/>
+        <reward_player money="$Credits"/>
+        <debug_text text="'[Twitch] sub_reward: tier %s (%s) paid %s'.[$Idx, $Tier, $Credits]" filter="general"/>
+        <signal_cue_instantly cue="Twitch_Say"
+          param="'New tier %s sub! The channel just wired the pilot %s Cr. Thank you!'.[$Idx, $Credits.formatted.default]"/>
       </actions>
     </cue>
 
+    <!-- A cheer pays the player 100 Cr per bit, capped at $Cap bits (5000 bits =
+         500k Cr). The bits arrive as a STRING in param3 and MD cannot parse a
+         number, so the cue counts up until '%s'.[$i] matches it: the loop runs as
+         many times as the cheer has bits, never more than $Cap. A value it never
+         meets (above the cap) pays the cap. -->
     <cue name="Twitch_OnCheerBoost" instantiate="true">
       <conditions>
         <event_ui_triggered screen="'Twitch_Integration'" control="'cheer_boost'"/>
       </conditions>
       <actions>
-        <debug_text text="'[Twitch] cheer_boost'" filter="general"/>
-        <!-- TODO: temporary boost scaled by args.$bits -->
+        <set_value name="$Bits" exact="@event.param3"/>
+        <do_if value="$Bits == null or $Bits == ''">
+          <!-- No count at all must not pay the cap. -->
+          <debug_text text="'[Twitch] cheer_boost: no bits in the payload'" filter="general"/>
+        </do_if>
+        <do_else>
+          <set_value name="$Cap" exact="5000"/>
+          <set_value name="$N" exact="$Cap"/>
+          <do_all exact="$Cap" counter="$i">
+            <do_if value="'%s'.[$i] == $Bits">
+              <set_value name="$N" exact="$i"/>
+              <break/>
+            </do_if>
+          </do_all>
+          <set_value name="$Credits" exact="$N * 100Cr"/>
+          <reward_player money="$Credits"/>
+          <debug_text text="'[Twitch] cheer_boost: %s bits (counted %s) paid %s'.[$Bits, $N, $Credits]" filter="general"/>
+          <signal_cue_instantly cue="Twitch_Say"
+            param="'%s bits cheered! The pilot just received %s Cr.'.[$Bits, $Credits.formatted.default]"/>
+        </do_else>
       </actions>
     </cue>
 
@@ -2517,7 +2553,7 @@
              this line, the game is on an old script — load a save (or restart X4).
              This is the ONLY place the build is written; it is deliberately in
              Twitch_Say so no message can ever be emitted without it. -->
-        <set_value name="$Build" exact="'b27-escortlib'"/>
+        <set_value name="$Build" exact="'b28-subcheer'"/>
         <set_value name="$msg" exact="event.param + ' [' + $Build + ']'"/>
         <!-- Trailing '\n' frames the line for the bridge's newline-delimited reader.
              X4's pipe write does NOT add one (verified live 2026-06-09: the probe saw
