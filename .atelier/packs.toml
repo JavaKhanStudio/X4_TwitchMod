@@ -85,8 +85,9 @@ none of them errors at load. The ones that bite most often:
 BUILD STAMP: bump `$Build` in Twitch_Say on EVERY edit of twitch_integration.xml. It is the
 only way to tell a stale script from a broken fix in chat.
 Checks: `python3 -c "import xml.etree.ElementTree as E; E.parse('extensions/twitch_integration/md/twitch_integration.xml')"`,
-then test_md_sync.py, then the md.xsd validation in SKILL.md (needs lxml, which WSL's python3
-does not have; Windows `py` (inferred)).
+then test_md_sync.py, then `python3 bridge/tools/test_md_lint.py` (signal_cue param/delay, an
+event.param only signal_cue sends, $Build not bumped since HEAD), then the md.xsd validation in
+SKILL.md (needs lxml, which WSL's python3 does not have; Windows `py` has it).
 The MD file name must stay lowercase (DEVLOG, live bug 5). content.xml depends on
 ws_2042901274 (SirNukes Mod Support APIs), not on a folder name.
 X4 is a Windows game on this machine (<X4> on drive E, reachable under WSL at /mnt/e/…). An agent
