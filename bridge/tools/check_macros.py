@@ -26,15 +26,13 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from gen_ships import extract  # noqa: E402
+from x4cat import extract
 
 MD_FILES = sorted((Path(__file__).resolve().parents[2] / "extensions").rglob("md/*.xml"))
 
 # `macro.<name>` in an expression, and macro="<name>" as a bare attribute value.
-RE_EXPR = re.compile(r"macro\.([a-z0-9_]+_macro)\b", re.I)
-RE_ATTR = re.compile(r'macro="([a-z0-9_]+_macro)"', re.I)
+RE_EXPR = re.compile(r"macro\.([a-z0-9_]+_macro)\b", re.IGNORECASE)
+RE_ATTR = re.compile(r'macro="([a-z0-9_]+_macro)"', re.IGNORECASE)
 
 
 def vanilla_macros(root: Path) -> dict[str, str]:

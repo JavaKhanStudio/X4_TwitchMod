@@ -20,7 +20,7 @@ Where the data lives (verified against X4 8.00):
   * `t/0001-l044.xml` — the English TextDB the {page,line} refs point into.
 
 Re-run after installing a DLC to add its sectors. `sectors.py` loads the result.
-Reuses the cat/dat reader + text resolver from gen_ships.py (same archive format).
+Reuses the cat/dat reader in x4cat.py and the text resolver from gen_ships.py.
 """
 from __future__ import annotations
 
@@ -30,10 +30,11 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from gen_ships import merge_text, resolve
+from x4cat import all_cats, cat_entries, extract
 
-from gen_ships import all_cats, cat_entries, extract, merge_text, resolve  # noqa: E402
+# twitch_bridge.sectors (imported in main) from the bridge/ dir, uninstalled.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # The playable galaxy's map folder. Everything else in maps/ is a menu backdrop or a
 # self-contained Timelines scenario universe — spawning there is not a thing.

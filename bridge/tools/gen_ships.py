@@ -9,8 +9,7 @@ It reads each cat/dat pair (base + every installed DLC), pulls `libraries/wares.
 one row per player-buyable ship: {key, macro, label, credits, size, role}. Re-run
 after installing a DLC to pick up its ships. `ships.py` loads the result at runtime.
 
-Reading the cat/dat archives is x4cat.py's job; `all_cats`, `cat_entries` and
-`extract` are re-exported here for the tools that import them from this file.
+Reading the cat/dat archives is x4cat.py's job.
 """
 from __future__ import annotations
 
@@ -20,7 +19,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from x4cat import all_cats, cat_entries, extract, install_root  # noqa: F401
+from x4cat import all_cats, extract, install_root
 
 # ships we never offer: pure-enemy (Xenon/Kha'ak, price 0), drones, and research hulls.
 SKIP_MACRO = re.compile(r"_(xen|kha)_|transdrone|_drone_|_research_|_lasertower|_spacesuit")
