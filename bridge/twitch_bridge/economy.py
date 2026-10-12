@@ -8,6 +8,7 @@ or a `say` (to chat). Pure logic over a Wallet + the CATALOG — fully unit-test
 from __future__ import annotations
 
 import time
+from typing import ClassVar
 from collections import deque
 
 from . import protocol
@@ -189,6 +190,20 @@ class Economy:
                          f"{bal.coins} coins left (karma {bal.karma}%)"),
         ]
 
+    def _gate(self, user: str, role: str, ev: StoreEvent, cost: int,
+              label: str) -> list[dict] | None:
+        """Role, then coins, then the event cap: the checks every per-item price path
+        (!buy ship, !buy adopt) runs before it commits. None means go ahead."""
+        if ROLE_RANK[role] < ROLE_RANK[ev.min_role]:
+            return [protocol.say(f"@{user} {ev.label or ev.buy_key} needs {ev.min_role}.")]
+        if self.w.get(user).coins < cost:
+            return [protocol.say(f"@{user} not enough coins: {label} costs {cost}, "
+                                 f"you have {self.w.get(user).coins}.")]
+        capped = self._cap_check(ev)
+        if capped:
+            return [protocol.say(f"@{user} {capped}")]
+        return None
+
     # -- "buy any ship", priced by the ship's in-game value (ships.py registry) ---
     def _buy_ship(self, user: str, role: str, ev: StoreEvent, argvals: list[str]) -> list[dict]:
         query = " ".join(argvals)
@@ -202,14 +217,9 @@ class Economy:
             return [protocol.say(f"@{user} no ship '{query}'. Try !buy ship for the list.")]
 
         cost = ship.coins
-        if ROLE_RANK[role] < ROLE_RANK[ev.min_role]:
-            return [protocol.say(f"@{user} {ev.label or ev.buy_key} needs {ev.min_role}.")]
-        if self.w.get(user).coins < cost:
-            return [protocol.say(f"@{user} not enough coins: {ship.label} costs {cost}, "
-                                 f"you have {self.w.get(user).coins}.")]
-        capped = self._cap_check(ev)
-        if capped:
-            return [protocol.say(f"@{user} {capped}")]
+        refused = self._gate(user, role, ev, cost, ship.label)
+        if refused:
+            return refused
 
         # commit — send ONLY the macro as the arg (the lua ';'-joins arg values; a
         # single value keeps event.param3 == the macro string for macro.{$macro}).
@@ -258,14 +268,9 @@ class Economy:
             return [protocol.say(f"@{user} {ship.idcode} is taken — {who} adopted it.")]
 
         cost = ship.coins
-        if ROLE_RANK[role] < ROLE_RANK[ev.min_role]:
-            return [protocol.say(f"@{user} {ev.label or ev.buy_key} needs {ev.min_role}.")]
-        if self.w.get(user).coins < cost:
-            return [protocol.say(f"@{user} not enough coins: {ship.label} costs {cost}, "
-                                 f"you have {self.w.get(user).coins}.")]
-        capped = self._cap_check(ev)
-        if capped:
-            return [protocol.say(f"@{user} {capped}")]
+        refused = self._gate(user, role, ev, cost, ship.label)
+        if refused:
+            return refused
 
         # commit. The NAME is composed here, not in MD: this is the only side that
         # knows both the viewer's handle and the hull's type name, and it keeps MD
@@ -556,8 +561,9 @@ class Economy:
     # -- station ownership: the streamer's default, overridable per purchase -----
     # What a viewer may type at the end of a station buy. These are the ONLY two
     # values MD is ever sent, so the words chat uses can change freely here.
-    OWNER_WORDS = {"player": "player", "mine": "player", "me": "player",
-                   "ally": "ally", "allies": "ally", "twitchally": "ally"}
+    OWNER_WORDS: ClassVar[dict[str, str]] = {
+        "player": "player", "mine": "player", "me": "player",
+        "ally": "ally", "allies": "ally", "twitchally": "ally"}
 
     def _split_owner(self, argvals: list[str]) -> tuple[list[str], str]:
         """Peel a trailing owner word off a station buy.
@@ -727,7 +733,7 @@ class Economy:
         order = sorted(range(len(self._refundable)),
                        key=lambda i: self._refundable[i][6] != ref if ref else 0)
         for i in order:
-            when, eid, user, cost, karma_before, label, rec_ref = self._refundable[i]
+            _when, eid, user, cost, karma_before, label, rec_ref = self._refundable[i]
             if eid != action:
                 continue
             if ref and rec_ref and rec_ref != ref:
