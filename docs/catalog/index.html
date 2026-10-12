@@ -41,6 +41,14 @@
   .empty{color:var(--dim);padding:20px;text-align:center}
   footer{color:var(--dim);font-size:12px;margin-top:14px;display:flex;flex-wrap:wrap;gap:6px 18px}
   footer b{color:var(--txt)}
+  /* Desktop (r50): the description gets the room. Auto layout gave it ~100px, beside a
+     CHAT column as wide as the longest syntax (35 chars, nowrap) and a NICK of spare space. */
+  @media (min-width:721px){
+    .wrap{max-width:1240px}
+    td.buy{white-space:normal;min-width:150px;max-width:190px}  /* `<sector> <owner>` wraps */
+    td.desc{min-width:340px}
+    td.nick{max-width:150px}
+  }
   /* Phone (r30): each row becomes a card — syntax + cost, name, badges, nicks, description.
      The 10-column table only fit CHAT and NICK at 390px. Sorting needs the header, so it
      is desktop-only; the filters work the same. */
