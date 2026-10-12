@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Capture companion screenshots for the README via Playwright (reproducible).
 
-Writes docs/img/{oauth-setup,dashboard,catalog}.png. Uses a neutral socket path
+Writes docs/img/{oauth-setup,dashboard,catalog}.png, each under push-check's 1 MB
+(Pillow quantizes one that is over). Uses a neutral socket path
 and no real credentials, so the images contain no personal data.
 
     python tools/make_screenshots.py
@@ -20,6 +21,8 @@ IMG = ROOT.parent / "docs" / "img"
 IMG.mkdir(parents=True, exist_ok=True)
 PORT = 17620
 BASE = f"http://127.0.0.1:{PORT}/"
+# push-check refuses a file over 1 MB; the 2x full-page catalog shot is ~1.3 MB.
+MAX_BYTES = 1_000_000
 
 
 def wait_up(url, tries=80):
@@ -30,6 +33,18 @@ def wait_up(url, tries=80):
         except (OSError, http.client.HTTPException):   # not up yet / mid-start
             time.sleep(0.2)
     return False
+
+
+def fit_push_limit(path):
+    """Quantize `path` to 256 colours if it is over MAX_BYTES: it keeps its 2x
+    sharpness and looks the same (1.3 MB -> ~500 KB for catalog.png)."""
+    if path.stat().st_size <= MAX_BYTES:
+        return
+    from PIL import Image
+    with Image.open(path) as im:
+        small = im.convert("RGB").quantize(256, method=Image.Quantize.MEDIANCUT)
+    small.save(path, optimize=True)
+    print(f"quantized {path.name}: {path.stat().st_size // 1024} KB")
 
 
 # Point at an empty, isolated setup file so the bridge can NEVER read the real
@@ -58,6 +73,8 @@ try:
         pg.wait_for_timeout(800)
         pg.screenshot(path=str(IMG / "catalog.png"), full_page=True)
         b.close()
+    for shot in ("oauth-setup.png", "dashboard.png", "catalog.png"):
+        fit_push_limit(IMG / shot)
     print("wrote:", ", ".join(sorted(p.name for p in IMG.glob("*.png"))))
 finally:
     proc.terminate()
