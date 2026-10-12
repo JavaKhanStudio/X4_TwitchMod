@@ -52,6 +52,10 @@ def _load() -> dict[str, Ship]:
 
 
 SHIPS: dict[str, Ship] = _load()
+# Reverse index for the other direction: X4 reports a ship by MACRO (fleet roster,
+# fleet.py), and we need its type name + value back. Lowercased keys — MD's macro
+# spelling is not guaranteed to match the generator's case.
+MACROS: dict[str, Ship] = {s.macro.lower(): s for s in SHIPS.values()}
 
 
 def resolve(query: str) -> tuple[Ship | None, list[Ship]]:

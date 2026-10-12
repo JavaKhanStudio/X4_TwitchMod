@@ -1,0 +1,777 @@
+[
+ {
+  "key": "adventures promise",
+  "label": "Adventure's Promise",
+  "macro": "Cluster_721_Sector001_macro"
+ },
+ {
+  "key": "antigone memorial",
+  "label": "Antigone Memorial",
+  "macro": "Cluster_28_Sector001_macro"
+ },
+ {
+  "key": "argon prime",
+  "label": "Argon Prime",
+  "macro": "Cluster_14_Sector001_macro"
+ },
+ {
+  "key": "asteroid belt",
+  "label": "Asteroid Belt",
+  "macro": "Cluster_100_Sector001_macro"
+ },
+ {
+  "key": "atiyas misfortune i",
+  "label": "Atiya's Misfortune I",
+  "macro": "Cluster_26_Sector001_macro"
+ },
+ {
+  "key": "atiyas misfortune iii",
+  "label": "Atiya's Misfortune III",
+  "macro": "Cluster_26_Sector002_macro"
+ },
+ {
+  "key": "atreus clouds",
+  "label": "Atreus' Clouds",
+  "macro": "Cluster_608_Sector001_macro"
+ },
+ {
+  "key": "avarice i",
+  "label": "Avarice I",
+  "macro": "Cluster_500_Sector001_macro"
+ },
+ {
+  "key": "avarice iv",
+  "label": "Avarice IV",
+  "macro": "Cluster_500_Sector003_macro"
+ },
+ {
+  "key": "avarice v dead end",
+  "label": "Avarice V Dead End",
+  "macro": "Cluster_500_Sector002_macro"
+ },
+ {
+  "key": "barren shores",
+  "label": "Barren Shores",
+  "macro": "Cluster_602_Sector001_macro"
+ },
+ {
+  "key": "black hole sun iv",
+  "label": "Black Hole Sun IV",
+  "macro": "Cluster_06_Sector001_macro"
+ },
+ {
+  "key": "black hole sun v",
+  "label": "Black Hole Sun V",
+  "macro": "Cluster_06_Sector002_macro"
+ },
+ {
+  "key": "brennans triumph",
+  "label": "Brennan's Triumph",
+  "macro": "Cluster_115_Sector001_macro"
+ },
+ {
+  "key": "bright promise",
+  "label": "Bright Promise",
+  "macro": "Cluster_09_Sector001_macro"
+ },
+ {
+  "key": "cardinals domain",
+  "label": "Cardinal's Domain",
+  "macro": "Cluster_709_Sector001_macro"
+ },
+ {
+  "key": "cardinals redress",
+  "label": "Cardinal's Redress",
+  "macro": "Cluster_36_Sector001_macro"
+ },
+ {
+  "key": "ceos doubt",
+  "label": "CEO's Doubt",
+  "macro": "Cluster_713_Sector001_macro"
+ },
+ {
+  "key": "circle of deceit",
+  "label": "Circle of Deceit",
+  "macro": "Cluster_724_Sector001_macro"
+ },
+ {
+  "key": "company regard",
+  "label": "Company Regard",
+  "macro": "Cluster_20_Sector001_macro"
+ },
+ {
+  "key": "earth",
+  "label": "Earth",
+  "macro": "Cluster_104_Sector001_macro"
+ },
+ {
+  "key": "eighteen billion",
+  "label": "Eighteen Billion",
+  "macro": "Cluster_02_Sector001_macro"
+ },
+ {
+  "key": "eleventh hour",
+  "label": "Eleventh Hour",
+  "macro": "Cluster_417_Sector001_macro"
+ },
+ {
+  "key": "emperors pride iv",
+  "label": "Emperor's Pride IV",
+  "macro": "Cluster_424_Sector001_macro"
+ },
+ {
+  "key": "emperors pride vi",
+  "label": "Emperor's Pride VI",
+  "macro": "Cluster_424_Sector002_macro"
+ },
+ {
+  "key": "event horizon",
+  "label": "Event Horizon",
+  "macro": "Cluster_ror4_Sector001_macro"
+ },
+ {
+  "key": "family kritt",
+  "label": "Family Kritt",
+  "macro": "Cluster_402_Sector001_macro"
+ },
+ {
+  "key": "family nhuut",
+  "label": "Family Nhuut",
+  "macro": "Cluster_418_Sector001_macro"
+ },
+ {
+  "key": "family tkr",
+  "label": "Family Tkr",
+  "macro": "Cluster_407_Sector001_macro"
+ },
+ {
+  "key": "family zhin",
+  "label": "Family Zhin",
+  "macro": "Cluster_401_Sector001_macro"
+ },
+ {
+  "key": "faulty logic i",
+  "label": "Faulty Logic I",
+  "macro": "Cluster_25_Sector001_macro"
+ },
+ {
+  "key": "faulty logic vii",
+  "label": "Faulty Logic VII",
+  "macro": "Cluster_25_Sector002_macro"
+ },
+ {
+  "key": "fires of defeat",
+  "label": "Fires of Defeat",
+  "macro": "Cluster_421_Sector001_macro"
+ },
+ {
+  "key": "freedoms reach",
+  "label": "Freedom's Reach",
+  "macro": "Cluster_714_Sector001_macro"
+ },
+ {
+  "key": "frontier edge",
+  "label": "Frontier Edge",
+  "macro": "Cluster_49_Sector001_macro"
+ },
+ {
+  "key": "gaian prophecy",
+  "label": "Gaian Prophecy",
+  "macro": "Cluster_114_Sector001_macro"
+ },
+ {
+  "key": "getsu fune",
+  "label": "Getsu Fune",
+  "macro": "Cluster_48_Sector001_macro"
+ },
+ {
+  "key": "grand exchange i",
+  "label": "Grand Exchange I",
+  "macro": "Cluster_01_Sector001_macro"
+ },
+ {
+  "key": "grand exchange iii",
+  "label": "Grand Exchange III",
+  "macro": "Cluster_01_Sector002_macro"
+ },
+ {
+  "key": "grand exchange iv",
+  "label": "Grand Exchange IV",
+  "macro": "Cluster_01_Sector003_macro"
+ },
+ {
+  "key": "great reef",
+  "label": "Great Reef",
+  "macro": "Cluster_603_Sector001_macro"
+ },
+ {
+  "key": "guiding star v",
+  "label": "Guiding Star V",
+  "macro": "Cluster_416_Sector001_macro"
+ },
+ {
+  "key": "guiding star vii",
+  "label": "Guiding Star VII",
+  "macro": "Cluster_416_Sector002_macro"
+ },
+ {
+  "key": "hatikvahs choice i",
+  "label": "Hatikvah's Choice I",
+  "macro": "Cluster_29_Sector001_macro"
+ },
+ {
+  "key": "hatikvahs choice iii",
+  "label": "Hatikvah's Choice III",
+  "macro": "Cluster_29_Sector002_macro"
+ },
+ {
+  "key": "hatikvahs faith",
+  "label": "Hatikvah's Faith",
+  "macro": "Cluster_706_Sector001_macro"
+ },
+ {
+  "key": "heart of acrimony i the boneyard",
+  "label": "Heart of Acrimony I The Boneyard",
+  "macro": "Cluster_425_Sector001_macro"
+ },
+ {
+  "key": "heart of acrimony ii",
+  "label": "Heart of Acrimony II",
+  "macro": "Cluster_411_Sector001_macro"
+ },
+ {
+  "key": "heretics end",
+  "label": "Heretic's End",
+  "macro": "Cluster_31_Sector001_macro"
+ },
+ {
+  "key": "hewas twin i",
+  "label": "Hewa's Twin I",
+  "macro": "Cluster_19_Sector001_macro"
+ },
+ {
+  "key": "hewas twin ii",
+  "label": "Hewa's Twin II",
+  "macro": "Cluster_19_Sector002_macro"
+ },
+ {
+  "key": "hewas twin iii",
+  "label": "Hewa's Twin III",
+  "macro": "Cluster_42_Sector001_macro"
+ },
+ {
+  "key": "hewas twin iv the cove",
+  "label": "Hewa's Twin IV The Cove",
+  "macro": "Cluster_42_Sector002_macro"
+ },
+ {
+  "key": "hewas twin v",
+  "label": "Hewa's Twin V",
+  "macro": "Cluster_43_Sector001_macro"
+ },
+ {
+  "key": "holy ground",
+  "label": "Holy Ground",
+  "macro": "Cluster_ror3_Sector001_macro"
+ },
+ {
+  "key": "holy vision",
+  "label": "Holy Vision",
+  "macro": "Cluster_24_Sector001_macro"
+ },
+ {
+  "key": "ianamus zura iv",
+  "label": "Ianamus Zura IV",
+  "macro": "Cluster_15_Sector001_macro"
+ },
+ {
+  "key": "ianamus zura vii",
+  "label": "Ianamus Zura VII",
+  "macro": "Cluster_15_Sector002_macro"
+ },
+ {
+  "key": "jupiter",
+  "label": "Jupiter",
+  "macro": "Cluster_107_Sector001_macro"
+ },
+ {
+  "key": "kingdom end i",
+  "label": "Kingdom End I",
+  "macro": "Cluster_606_Sector001_macro"
+ },
+ {
+  "key": "lasting vengeance",
+  "label": "Lasting Vengeance",
+  "macro": "Cluster_35_Sector001_macro"
+ },
+ {
+  "key": "litany of fury ix",
+  "label": "Litany of Fury IX",
+  "macro": "Cluster_423_Sector001_macro"
+ },
+ {
+  "key": "litany of fury xii",
+  "label": "Litany of Fury XII",
+  "macro": "Cluster_423_Sector002_macro"
+ },
+ {
+  "key": "loomanckstrats legacy",
+  "label": "Loomanckstrat's Legacy",
+  "macro": "Cluster_712_Sector001_macro"
+ },
+ {
+  "key": "mars",
+  "label": "Mars",
+  "macro": "Cluster_101_Sector001_macro"
+ },
+ {
+  "key": "matrix 1 0 1",
+  "label": "Matrix # 1 0 1",
+  "macro": "Cluster_708_Sector001_macro"
+ },
+ {
+  "key": "matrix 4 5 1",
+  "label": "Matrix # 4 5 1",
+  "macro": "Cluster_16_Sector001_macro"
+ },
+ {
+  "key": "matrix 5 9 8",
+  "label": "Matrix # 5 9 8",
+  "macro": "Cluster_415_Sector001_macro"
+ },
+ {
+  "key": "matrix 7 9 b",
+  "label": "Matrix # 7 9 B",
+  "macro": "Cluster_33_Sector001_macro"
+ },
+ {
+  "key": "matrix 9",
+  "label": "Matrix # 9",
+  "macro": "Cluster_17_Sector001_macro"
+ },
+ {
+  "key": "memory of profit ix",
+  "label": "Memory of Profit IX",
+  "macro": "Cluster_03_Sector001_macro"
+ },
+ {
+  "key": "memory of profit x",
+  "label": "Memory of Profit X",
+  "macro": "Cluster_39_Sector001_macro"
+ },
+ {
+  "key": "menelaus oasis",
+  "label": "Menelaus' Oasis",
+  "macro": "Cluster_609_Sector001_macro"
+ },
+ {
+  "key": "mercury",
+  "label": "Mercury",
+  "macro": "Cluster_106_Sector001_macro"
+ },
+ {
+  "key": "mi tons refuge",
+  "label": "Mi Ton's Refuge",
+  "macro": "Cluster_711_Sector001_macro"
+ },
+ {
+  "key": "mists of artemis",
+  "label": "Mists of Artemis",
+  "macro": "Cluster_715_Sector001_macro"
+ },
+ {
+  "key": "mitsunos defiance",
+  "label": "Mitsuno's Defiance",
+  "macro": "Cluster_702_Sector001_macro"
+ },
+ {
+  "key": "mitsunos revelation",
+  "label": "Mitsuno's Revelation",
+  "macro": "Cluster_701_Sector001_macro"
+ },
+ {
+  "key": "mitsunos sacrifice",
+  "label": "Mitsuno's Sacrifice",
+  "macro": "Cluster_703_Sector001_macro"
+ },
+ {
+  "key": "moo kyes revenge",
+  "label": "Moo-Kye's Revenge",
+  "macro": "Cluster_710_Sector001_macro"
+ },
+ {
+  "key": "morning star iii",
+  "label": "Morning Star III",
+  "macro": "Cluster_30_Sector001_macro"
+ },
+ {
+  "key": "morning star iv",
+  "label": "Morning Star IV",
+  "macro": "Cluster_46_Sector001_macro"
+ },
+ {
+  "key": "neptune",
+  "label": "Neptune",
+  "macro": "Cluster_110_Sector001_macro"
+ },
+ {
+  "key": "nopileos fortune ii",
+  "label": "Nopileos' Fortune II",
+  "macro": "Cluster_04_Sector001_macro"
+ },
+ {
+  "key": "nopileos fortune vi",
+  "label": "Nopileos' Fortune VI",
+  "macro": "Cluster_04_Sector002_macro"
+ },
+ {
+  "key": "nopileos memorial",
+  "label": "Nopileos' Memorial",
+  "macro": "Cluster_705_Sector001_macro"
+ },
+ {
+  "key": "ocean of fantasy",
+  "label": "Ocean of Fantasy",
+  "macro": "Cluster_604_Sector001_macro"
+ },
+ {
+  "key": "oort cloud",
+  "label": "Oort Cloud",
+  "macro": "Cluster_116_Sector001_macro"
+ },
+ {
+  "key": "open market",
+  "label": "Open Market",
+  "macro": "Cluster_419_Sector001_macro"
+ },
+ {
+  "key": "ore belt",
+  "label": "Ore Belt",
+  "macro": "Cluster_720_Sector001_macro"
+ },
+ {
+  "key": "path to profit",
+  "label": "Path to Profit",
+  "macro": "Cluster_05_Sector001_macro"
+ },
+ {
+  "key": "pious mists ii",
+  "label": "Pious Mists II",
+  "macro": "Cluster_22_Sector001_macro"
+ },
+ {
+  "key": "pious mists iv",
+  "label": "Pious Mists IV",
+  "macro": "Cluster_37_Sector001_macro"
+ },
+ {
+  "key": "pious mists xi",
+  "label": "Pious Mists XI",
+  "macro": "Cluster_38_Sector001_macro"
+ },
+ {
+  "key": "pluto",
+  "label": "Pluto",
+  "macro": "Cluster_111_Sector001_macro"
+ },
+ {
+  "key": "pontifexs claim",
+  "label": "Pontifex's Claim",
+  "macro": "Cluster_11_Sector001_macro"
+ },
+ {
+  "key": "presidents end",
+  "label": "President's End",
+  "macro": "Cluster_704_Sector001_macro"
+ },
+ {
+  "key": "profit center alpha",
+  "label": "Profit Center Alpha",
+  "macro": "Cluster_34_Sector001_macro"
+ },
+ {
+  "key": "reflected stars",
+  "label": "Reflected Stars",
+  "macro": "Cluster_606_Sector002_macro"
+ },
+ {
+  "key": "rhys defiance",
+  "label": "Rhy's Defiance",
+  "macro": "Cluster_414_Sector001_macro"
+ },
+ {
+  "key": "rolks demise",
+  "label": "Rolk's Demise",
+  "macro": "Cluster_607_Sector001_macro"
+ },
+ {
+  "key": "sacred relic",
+  "label": "Sacred Relic",
+  "macro": "Cluster_23_Sector001_macro"
+ },
+ {
+  "key": "sanctuary of darkness",
+  "label": "Sanctuary of Darkness",
+  "macro": "Cluster_605_Sector001_macro"
+ },
+ {
+  "key": "sanctum verge",
+  "label": "Sanctum Verge",
+  "macro": "Cluster_722_Sector001_macro"
+ },
+ {
+  "key": "saturn 1",
+  "label": "Saturn 1",
+  "macro": "Cluster_108_Sector001_macro"
+ },
+ {
+  "key": "saturn 2",
+  "label": "Saturn 2",
+  "macro": "Cluster_108_Sector003_macro"
+ },
+ {
+  "key": "savage spur i",
+  "label": "Savage Spur I",
+  "macro": "Cluster_112_Sector001_macro"
+ },
+ {
+  "key": "savage spur ii",
+  "label": "Savage Spur II",
+  "macro": "Cluster_112_Sector002_macro"
+ },
+ {
+  "key": "scale plate green i",
+  "label": "Scale Plate Green I",
+  "macro": "Cluster_21_Sector001_macro"
+ },
+ {
+  "key": "scale plate green vii",
+  "label": "Scale Plate Green VII",
+  "macro": "Cluster_21_Sector002_macro"
+ },
+ {
+  "key": "scarlet star",
+  "label": "Scarlet Star",
+  "macro": "Cluster_740_Sector001_macro"
+ },
+ {
+  "key": "second contact ii flashpoint",
+  "label": "Second Contact II Flashpoint",
+  "macro": "Cluster_13_Sector001_macro"
+ },
+ {
+  "key": "second contact vii",
+  "label": "Second Contact VII",
+  "macro": "Cluster_40_Sector001_macro"
+ },
+ {
+  "key": "second contact xi",
+  "label": "Second Contact XI",
+  "macro": "Cluster_41_Sector001_macro"
+ },
+ {
+  "key": "segaris",
+  "label": "Segaris",
+  "macro": "Cluster_113_Sector001_macro"
+ },
+ {
+  "key": "silent witness i",
+  "label": "Silent Witness I",
+  "macro": "Cluster_08_Sector001_macro"
+ },
+ {
+  "key": "silent witness xi",
+  "label": "Silent Witness XI",
+  "macro": "Cluster_44_Sector001_macro"
+ },
+ {
+  "key": "silent witness xii",
+  "label": "Silent Witness XII",
+  "macro": "Cluster_45_Sector001_macro"
+ },
+ {
+  "key": "tempting fumes",
+  "label": "Tempting Fumes",
+  "macro": "Cluster_723_Sector001_macro"
+ },
+ {
+  "key": "tharkas cascade xv",
+  "label": "Tharka's Cascade XV",
+  "macro": "Cluster_32_Sector001_macro"
+ },
+ {
+  "key": "tharkas cascade xvii",
+  "label": "Tharka's Cascade XVII",
+  "macro": "Cluster_32_Sector002_macro"
+ },
+ {
+  "key": "tharkas ravine iv tharkas fall",
+  "label": "Tharka's Ravine IV Tharka's Fall",
+  "macro": "Cluster_413_Sector001_macro"
+ },
+ {
+  "key": "tharkas ravine viii",
+  "label": "Tharka's Ravine VIII",
+  "macro": "Cluster_412_Sector001_macro"
+ },
+ {
+  "key": "tharkas ravine xvi",
+  "label": "Tharka's Ravine XVI",
+  "macro": "Cluster_410_Sector001_macro"
+ },
+ {
+  "key": "tharkas ravine xxiv",
+  "label": "Tharka's Ravine XXIV",
+  "macro": "Cluster_409_Sector001_macro"
+ },
+ {
+  "key": "the moon",
+  "label": "The Moon",
+  "macro": "Cluster_104_Sector002_macro"
+ },
+ {
+  "key": "the reach",
+  "label": "The Reach",
+  "macro": "Cluster_07_Sector001_macro"
+ },
+ {
+  "key": "the void",
+  "label": "The Void",
+  "macro": "Cluster_27_Sector001_macro"
+ },
+ {
+  "key": "theia",
+  "label": "Theia",
+  "macro": "Cluster_ror1_Sector001_macro"
+ },
+ {
+  "key": "thuruks demise ii first impact",
+  "label": "Thuruk's Demise II First Impact",
+  "macro": "Cluster_408_Sector002_macro"
+ },
+ {
+  "key": "thuruks demise iii",
+  "label": "Thuruk's Demise III",
+  "macro": "Cluster_408_Sector001_macro"
+ },
+ {
+  "key": "titan",
+  "label": "Titan",
+  "macro": "Cluster_108_Sector002_macro"
+ },
+ {
+  "key": "towering wave",
+  "label": "Towering Wave",
+  "macro": "Cluster_606_Sector003_macro"
+ },
+ {
+  "key": "trinity sanctum iii",
+  "label": "Trinity Sanctum III",
+  "macro": "Cluster_18_Sector001_macro"
+ },
+ {
+  "key": "trinity sanctum vii",
+  "label": "Trinity Sanctum VII",
+  "macro": "Cluster_47_Sector001_macro"
+ },
+ {
+  "key": "triton",
+  "label": "Triton",
+  "macro": "Cluster_ror2_Sector001_macro"
+ },
+ {
+  "key": "true sight",
+  "label": "True Sight",
+  "macro": "Cluster_12_Sector001_macro"
+ },
+ {
+  "key": "turquoise sea ix",
+  "label": "Turquoise Sea IX",
+  "macro": "Cluster_50_Sector001_macro"
+ },
+ {
+  "key": "turquoise sea x",
+  "label": "Turquoise Sea X",
+  "macro": "Cluster_50_Sector002_macro"
+ },
+ {
+  "key": "two grand",
+  "label": "Two Grand",
+  "macro": "Cluster_420_Sector001_macro"
+ },
+ {
+  "key": "unholy retribution",
+  "label": "Unholy Retribution",
+  "macro": "Cluster_10_Sector001_macro"
+ },
+ {
+  "key": "unknown system",
+  "label": "Unknown System",
+  "macro": "Cluster_504_Sector001_macro"
+ },
+ {
+  "key": "uranus",
+  "label": "Uranus",
+  "macro": "Cluster_109_Sector001_macro"
+ },
+ {
+  "key": "venus",
+  "label": "Venus",
+  "macro": "Cluster_102_Sector001_macro"
+ },
+ {
+  "key": "void of opportunity",
+  "label": "Void of Opportunity",
+  "macro": "Cluster_725_Sector001_macro"
+ },
+ {
+  "key": "watchful gaze",
+  "label": "Watchful Gaze",
+  "macro": "Cluster_601_Sector001_macro"
+ },
+ {
+  "key": "windfall i union summit",
+  "label": "Windfall I Union Summit",
+  "macro": "Cluster_501_Sector001_macro"
+ },
+ {
+  "key": "windfall iii the hoard",
+  "label": "Windfall III The Hoard",
+  "macro": "Cluster_502_Sector001_macro"
+ },
+ {
+  "key": "windfall iv auroras dream",
+  "label": "Windfall IV Aurora's Dream",
+  "macro": "Cluster_503_Sector001_macro"
+ },
+ {
+  "key": "wretched skies iv family valka",
+  "label": "Wretched Skies IV Family Valka",
+  "macro": "Cluster_400_Sector001_macro"
+ },
+ {
+  "key": "wretched skies v family phi",
+  "label": "Wretched Skies V Family Phi",
+  "macro": "Cluster_403_Sector001_macro"
+ },
+ {
+  "key": "wretched skies x",
+  "label": "Wretched Skies X",
+  "macro": "Cluster_422_Sector001_macro"
+ },
+ {
+  "key": "zyarths dominion i",
+  "label": "Zyarth's Dominion I",
+  "macro": "Cluster_404_Sector001_macro"
+ },
+ {
+  "key": "zyarths dominion iv",
+  "label": "Zyarth's Dominion IV",
+  "macro": "Cluster_405_Sector001_macro"
+ },
+ {
+  "key": "zyarths dominion x",
+  "label": "Zyarth's Dominion X",
+  "macro": "Cluster_406_Sector001_macro"
+ }
+]

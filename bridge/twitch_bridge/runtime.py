@@ -20,3 +20,21 @@ class Runtime:
     # per-event cap ("maxed this window") and the per-karma-type cap ("too many
     # 'bad' events right now, try later") — for testing without hitting limits.
     caps_enabled: bool = True
+    # Who owns a station chat builds when the buy line doesn't say. False (the
+    # default) => the Twitch Allies faction: friendly, defends the sector, trades,
+    # but not free real estate on the player's account. True => the player owns
+    # everything chat builds. A viewer can always override this for one purchase by
+    # ending the line with `player` or `ally`.
+    stations_to_player: bool = False
+    # "Accept crisis level" — the streamer's consent to tier-3 (Doom) events, the
+    # ones that can cost the player their fleet, their station or the save. OFF by
+    # default: a crisis event is in the shop and priced, but nobody can buy it (and
+    # no moderator can fire its test command) until the streamer ticks the box.
+    #
+    # WHY A SWITCH AND NOT `enabled=False` IN THE CATALOG: `enabled` is authoring
+    # state — changing it means editing catalog.py and restarting the companion, so
+    # in practice a doom event shipped off stays off forever. This is the same
+    # decision made live, mid-stream, by the person who actually carries the
+    # consequences, and it can be taken back just as fast. Session-only on purpose:
+    # consent to blow up the save should not silently survive into next stream.
+    crisis_enabled: bool = False

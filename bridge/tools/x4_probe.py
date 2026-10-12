@@ -14,14 +14,17 @@ from twitch_bridge import protocol  # noqa: E402
 
 PIPE = r"\\.\pipe\twitch"
 
-# Each test: (label, cmd dict). The mod replies with a 'say' we capture.
+# Each test: (label, cmd dict). The mod replies with a 'say' we capture. Built with
+# protocol.command (never hand-written dicts) so the probe sends the same wire shape
+# the bridge does — including the ORDERED `argv` array the mod reads args from.
 TESTS = [
-    ("argtest string", {"t": "cmd", "id": "argtest", "by": "probe", "args": {"value": "hello"}}),
-    ("incident argon+paranid", {"t": "cmd", "id": "faction_incident", "by": "probe",
-                                "args": {"faction1": "argon", "faction2": "paranid"}}),
-    ("incident teladi only", {"t": "cmd", "id": "faction_incident", "by": "probe",
-                              "args": {"faction1": "teladi"}}),
-    ("incident none", {"t": "cmd", "id": "faction_incident", "by": "probe", "args": {}}),
+    ("argtest string", protocol.command("argtest", "probe", {"value": "hello"})),
+    ("argtest two args", protocol.command("argtest", "probe", {"one": "first", "two": "second"})),
+    ("incident argon+paranid", protocol.command("faction_incident", "probe",
+                                                {"faction1": "argon", "faction2": "paranid"})),
+    ("incident teladi only", protocol.command("faction_incident", "probe",
+                                              {"faction1": "teladi"})),
+    ("incident none", protocol.command("faction_incident", "probe", {})),
 ]
 
 

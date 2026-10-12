@@ -193,9 +193,23 @@ PAGE = """<!doctype html>
         <span class="dim">— testing: fire actions with no wait</span></label></div>
       <div><label class="chk"><input type="checkbox" id="capstoggle"> Disable purchase limits
         <span class="dim">— testing: no per-window caps (“too many … try later”)</span></label></div>
+      <div><label class="chk"><input type="checkbox" id="crisistoggle"> Accept crisis level
+        <span class="dim">— off: nobody can buy a tier-3 Doom event (Xenon Armada), and
+        !armada does nothing. On: chat can end your save. Resets when the companion
+        restarts.</span></label></div>
+      <div><label class="chk"><input type="checkbox" id="ownertoggle"> Stations go to the player
+        <span class="dim">— off: chat builds for the Twitch Allies. A viewer can override
+        either way per buy (“!buy wharf argon prime player”).</span></label></div>
       <div class="vwrap"><table class="vtab">
-        <thead><tr><th>Viewer</th><th class="num">Coins</th><th class="num">Karma</th><th>Status</th></tr></thead>
-        <tbody id="vbody"><tr><td colspan="4" class="dim">no viewers yet</td></tr></tbody>
+        <thead><tr><th>Viewer</th><th class="num">Coins</th><th class="num">Karma</th><th>Status</th><th>Adopted ship</th></tr></thead>
+        <tbody id="vbody"><tr><td colspan="5" class="dim">no viewers yet</td></tr></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Adoption record</h2>
+      <div class="vwrap"><table class="vtab">
+        <thead><tr><th>When</th><th>Viewer</th><th>Ship</th><th>Event</th></tr></thead>
+        <tbody id="ahbody"><tr><td colspan="4" class="dim">no adoptions recorded yet</td></tr></tbody>
       </table></div>
     </div>
     <div class="card feed"><h2>Activity</h2><ul id="feed"><li><span class="x" style="color:var(--dim)">waiting for events…</span></li></ul></div>
@@ -241,13 +255,18 @@ async function tick(){
       txt($('ecoins'),e.coins_in_circulation??0); txt($('eawarded'),e.coins_awarded_total??0);
       const first=$('admincard').style.display==='none'; disp($('admincard'),true);
       // load the viewer table on first reveal, then refresh it every ~5s so balances track awards
-      if(first||(_vt++%5===0)) loadViewers(); }
+      if(first||(_vt++%5===0)){ loadViewers(); loadAdoptions(); } }
     // reflect the live testing flags (checkbox checked == that limiter disabled)
     const fl=s.flags||{};
     const syncChk=(id,val)=>{ if(val===undefined) return; const want=val===false; const el=$(id);
       if(el && document.activeElement!==el && el.checked!==want) el.checked=want; };
     syncChk('cdtoggle', fl.cooldowns_enabled);
     syncChk('capstoggle', fl.caps_enabled);
+    // these two are NOT disable-switches: checked == the flag is true
+    const syncOn=(id,val)=>{ if(val===undefined) return; const el=$(id), want=val===true;
+      if(el && document.activeElement!==el && el.checked!==want) el.checked=want; };
+    syncOn('ownertoggle', fl.stations_to_player);
+    syncOn('crisistoggle', fl.crisis_enabled);
     if(s.recent&&s.recent.length){
       html($('feed'),s.recent.map(r=>`<li><span class="t">${fmtT(r.ts)}</span><span class="b ${r.dir}">${r.dir}</span><span class="x">${esc(r.text)}</span></li>`).join('')); }
     html($('foot'),s.last_error?('<span class="err">last error: '+esc(s.last_error)+'</span>'):'connected to companion · refreshing every 1s');
@@ -275,14 +294,38 @@ async function admin(payload){
     body:JSON.stringify(payload)}); return await r.json(); }
   catch(e){ return {ok:false,error:'cannot reach companion'}; }
 }
+// One viewer's adopted ship(s) for the moderation table. Kept terse: the column has
+// to stay readable next to coins and karma, so it is id + type + the one number that
+// matters (hull, or the rebuild price when the ship is a wreck).
+function shipCell(ships){
+  if(!ships||!ships.length) return '<span class="dim">—</span>';
+  return ships.map(s=>{
+    if(s.state==='destroyed') return '<span class="banned">'+esc(s.idcode+' '+s.label)
+      +' destroyed'+(s.killer?' by '+esc(s.killer):'')+'</span>'
+      +'<span class="dim"> · rebuild '+s.rebuild+'c</span>';
+    if(s.state==='missing') return esc(s.idcode+' '+s.label)+'<span class="dim"> · not in the latest fleet list</span>';
+    const cond=(s.hull>=0?' · hull '+s.hull+'%':'')+(s.sector?' · '+esc(s.sector):'');
+    return esc(s.idcode+' '+s.label)+'<span class="dim">'+cond+'</span>';
+  }).join('<br>');
+}
 async function loadViewers(){
   let d; try{ d=await (await fetch('/api/viewers',{cache:'no-store'})).json(); }catch(e){ return; }
   if(!d||!d.viewers) return;
   const rows=d.viewers.map(v=>'<tr><td class="pick" data-u="'+esc(v.username)+'">'+esc(v.username)+'</td>'
     +'<td class="num">'+v.coins+'</td><td class="num">'+v.karma+'%</td><td>'
-    +(v.banned?'<span class="banned">blocked</span>':(v.mod?'mod':v.sub?'sub':v.vip?'vip':'—'))+'</td></tr>').join('');
-  html($('vbody'),rows||'<tr><td colspan="4" class="dim">no viewers yet</td></tr>');
+    +(v.banned?'<span class="banned">blocked</span>':(v.mod?'mod':v.sub?'sub':v.vip?'vip':'—'))+'</td>'
+    +'<td>'+shipCell(v.ships)+'</td></tr>').join('');
+  html($('vbody'),rows||'<tr><td colspan="5" class="dim">no viewers yet</td></tr>');
   document.querySelectorAll('#vbody .pick').forEach(td=>td.onclick=()=>{$('advuser').value=td.dataset.u;});
+}
+async function loadAdoptions(){
+  let d; try{ d=await (await fetch('/api/adoptions',{cache:'no-store'})).json(); }catch(e){ return; }
+  if(!d||!d.ok) return;
+  const hist=(d.history||[]).slice(0,60).map(h=>'<tr><td class="dim">'
+    +esc(new Date((h.at||0)*1000).toLocaleString())+'</td><td>'+esc(h.user)
+    +'</td><td>'+esc((h.idcode||'')+' '+(h.label||''))+'</td><td>'+esc(h.event)
+    +(h.killer?' by '+esc(h.killer):'')+(h.was?' (was '+esc(h.was)+')':'')+'</td></tr>').join('');
+  html($('ahbody'),hist||'<tr><td colspan="4" class="dim">no adoptions recorded yet</td></tr>');
 }
 (function wireAdmin(){
   const st=m=>html($('adstate'),m);
@@ -307,6 +350,23 @@ async function loadViewers(){
       else st(r[key]?onmsg:offmsg); }; };
   toggle(g('cdtoggle'),'cooldowns','cooldowns re-enabled','⚡ cooldowns disabled — fire away','cooldowns_enabled');
   toggle(g('capstoggle'),'caps','purchase limits re-enabled','⚡ purchase limits disabled — spam away','caps_enabled');
+  // Station ownership reads the other way round (checked == ON), so it can't use
+  // toggle(), which sends value:!checked for the two disable-switches.
+  { const el=g('ownertoggle'); if(el) el.onchange=async()=>{
+      const r=await admin({action:'stationowner',value:el.checked});
+      if(!r.ok){ st('<span class="err">'+esc(r.error||'failed')+'</span>'); el.checked=!el.checked; }
+      else st(r.stations_to_player?'🏗 stations now go to the PLAYER'
+                                   :'stations now go to the Twitch Allies'); }; }
+  // Crisis level: same checked==ON shape, plus a confirm on the way UP only. Turning
+  // it back off must never be the click that asks a question.
+  { const el=g('crisistoggle'); if(el) el.onchange=async()=>{
+      if(el.checked && !confirm('Accept crisis level?\\n\\nViewers will be able to buy the '
+         + 'Xenon Armada (a Xenon I + 21 escorts). Nothing cleans them up, and this can '
+         + 'cost you the save.')){ el.checked=false; return; }
+      const r=await admin({action:'crisis',value:el.checked});
+      if(!r.ok){ st('<span class="err">'+esc(r.error||'failed')+'</span>'); el.checked=!el.checked; }
+      else st(r.crisis_enabled?'☠ CRISIS LEVEL ACCEPTED — chat can buy Doom events'
+                              :'crisis events are off'); }; }
 })();
 // --- Restart button: bounce the companion, then reload once it's back ---
 const rbtn=$('restart');
@@ -376,6 +436,10 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/viewers"):
             # The admin panel's viewer table (username, coins, karma, banned).
             result = self.on_admin({"action": "list"}) if self.on_admin else {"ok": False}
+            self._send(200, json.dumps(result).encode(), "application/json")
+        elif self.path.startswith("/api/adoptions"):
+            # Who has adopted what, and the full record of every adoption ever.
+            result = self.on_admin({"action": "adoptions"}) if self.on_admin else {"ok": False}
             self._send(200, json.dumps(result).encode(), "application/json")
         elif self.path.endswith("/icon.svg"):
             # Before /catalog: the catalog page asks for it relative to itself, and

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 from . import protocol, setup_store
 from .catalog import STARTER
@@ -15,6 +16,7 @@ from .commands import CommandEngine
 from .config import Config
 from .dashboard import Dashboard
 from .economy import Economy
+from .fleet import Fleet
 from .runtime import Runtime
 from .sources import make_source
 from .wallet import Wallet
@@ -65,8 +67,16 @@ async def main(config: Config) -> None:
     runtime = Runtime()   # live testing switches, toggled from the dashboard
     engine = CommandEngine(STARTER, runtime=runtime)
     status = Status(source=source.name, channel=config.channel, socket_path=config.socket_path)
-    status.set_flags({"cooldowns_enabled": runtime.cooldowns_enabled,
-                      "caps_enabled": runtime.caps_enabled})
+    def publish_flags() -> None:
+        """Push the WHOLE live-switch set to the dashboard. Status.set_flags replaces
+        the dict rather than merging, so a partial push silently unsyncs the other
+        checkboxes."""
+        status.set_flags({"cooldowns_enabled": runtime.cooldowns_enabled,
+                          "caps_enabled": runtime.caps_enabled,
+                          "stations_to_player": runtime.stations_to_player,
+                          "crisis_enabled": runtime.crisis_enabled})
+
+    publish_flags()
 
     # If this is the twitch source, mirror its connection state into the dashboard.
     if hasattr(source, "set_status_cb"):
@@ -103,10 +113,13 @@ async def main(config: Config) -> None:
         if hasattr(source, "disconnect"):
             asyncio.run_coroutine_threadsafe(source.disconnect(), loop)
 
-    wallet = econ = None
+    wallet = econ = fleet = None
     if config.economy:
         wallet = Wallet(config.wallet_path)
-        econ = Economy(wallet, runtime=runtime)
+        # Adoptions live beside the wallet: same directory, same lifetime. The roster
+        # itself is NOT persisted — X4 republishes it on every load.
+        fleet = Fleet(Path(config.wallet_path).with_name("adoptions.json"))
+        econ = Economy(wallet, runtime=runtime, fleet=fleet)
         status.set_econ(wallet.stats())
 
     def on_admin(body: dict) -> dict:
@@ -118,18 +131,46 @@ async def main(config: Config) -> None:
             action = (body.get("action") or "").strip()
             target = (body.get("user") or "").strip().lstrip("@").lower()
             # runtime testing toggles work with or without the economy
+            if action == "stationowner":
+                runtime.stations_to_player = bool(body.get("value"))
+                publish_flags()
+                status.note("stations now go to "
+                            + ("the PLAYER" if runtime.stations_to_player else "the Twitch Allies"))
+                return {"ok": True, "stations_to_player": runtime.stations_to_player}
+            if action == "crisis":
+                runtime.crisis_enabled = bool(body.get("value"))
+                publish_flags()
+                status.note("CRISIS LEVEL ACCEPTED — tier-3 events can be bought"
+                            if runtime.crisis_enabled else "crisis events are off again")
+                return {"ok": True, "crisis_enabled": runtime.crisis_enabled}
             if action in ("cooldowns", "caps"):
                 field = "cooldowns_enabled" if action == "cooldowns" else "caps_enabled"
                 setattr(runtime, field, bool(body.get("value")))
-                status.set_flags({"cooldowns_enabled": runtime.cooldowns_enabled,
-                                  "caps_enabled": runtime.caps_enabled})
+                publish_flags()
                 label = "cooldowns" if action == "cooldowns" else "purchase limits"
                 status.note(f"testing: {label} {'ON' if getattr(runtime, field) else 'OFF'}")
                 return {"ok": True, field: getattr(runtime, field)}
             if wallet is None:
                 return {"ok": False, "error": "economy is off"}
             if action == "list":
-                return {"ok": True, "viewers": wallet.viewer_list()}
+                # The moderation table. Each viewer carries their adopted ship, so a
+                # mod looking at "who is this person" sees what they hold in the game
+                # without cross-referencing a second panel.
+                rows = wallet.viewer_list()
+                if fleet is not None:
+                    for r in rows:
+                        r["ships"] = [fleet.card(c) for c in fleet.ships_of(r["username"])]
+                return {"ok": True, "viewers": rows}
+            if action == "adoptions":
+                # Who holds what right now, plus the full lifecycle log. Read-only:
+                # the dashboard shows it, nothing acts on it.
+                if fleet is None:
+                    return {"ok": False, "error": "the fleet is not tracked"}
+                current = [dict(fleet.card(code), user=who)
+                           for code, who in fleet.adoptions.items()]
+                current.sort(key=lambda r: (r["user"], r["idcode"]))
+                return {"ok": True, "adoptions": current,
+                        "history": list(reversed(fleet.history))}
             if action == "giveall":
                 amount = int(body.get("amount") or 0)
                 for v in list(wallet.viewers.values()):
@@ -164,6 +205,45 @@ async def main(config: Config) -> None:
     # X4 -> bridge actions also flow through the status feed before the source handles them.
     async def on_x4_message(msg: dict) -> None:
         status.record_action(msg)
+        # A command X4 couldn't carry out (no room for a station, no target, ...):
+        # refund the buyer instead of leaving them charged for nothing. The economy
+        # turns it into the chat message, so nothing else is said about it here.
+        # The player's ship roster. Bookkeeping only — it never reaches chat, so it
+        # stops here instead of falling through to the source's action handler.
+        if msg.get("t") == protocol.FLEET:
+            if fleet is not None:
+                n = fleet.update(msg)
+                lost = fleet.prune_missing()
+                status.note(f"fleet: {n} ships"
+                            + (f" ({fleet.total} owned)" if fleet.truncated else "")
+                            + (f"; {len(lost)} adopted ship(s) went missing" if lost else ""))
+                # Re-arm X4's death watch for every adopted ship still in the fleet.
+                # MD's group is rebuilt from scratch by a savegame load, and a save
+                # from another timeline may hold a completely different one, so the
+                # registry has to keep asserting what it believes. add_to_group is
+                # idempotent, and there are only ever a handful of adopted ships, so
+                # re-sending each roster is cheaper than tracking MD's state here.
+                for code in list(fleet.adoptions):
+                    if code in fleet.ships:
+                        await dispatch(protocol.command("watch_ship", "bridge",
+                                                        {"idcode": code}))
+            return
+        # An adopted ship died, or a replacement for one was built. Both change who
+        # owns what, so they go through the economy. dispatch() (not handle_action)
+        # because handle_ship_new answers with a `cmd` as well as a `say` — the
+        # rename of the new hull rides the ordinary adopt_ship path.
+        if msg.get("t") in (protocol.SHIPDOWN, protocol.SHIPNEW) and econ is not None:
+            handler = (econ.handle_ship_down if msg["t"] == protocol.SHIPDOWN
+                       else econ.handle_ship_new)
+            for out in handler(msg):
+                await dispatch(out)
+            return
+        if msg.get("t") == protocol.CMDFAIL:
+            if econ is not None:
+                for out in econ.handle_x4_failure(msg):
+                    status.record_action(out)
+                    await source.handle_action(out)
+            return
         await source.handle_action(msg)
 
     link = make_x4_link(config.socket_path, on_message=on_x4_message,
@@ -182,12 +262,13 @@ async def main(config: Config) -> None:
             except Exception as e:  # never let opening a browser kill the companion
                 log.warning("could not auto-open browser (%s) — open %s manually", e, dash.url)
 
-    # Self-install the app-menu launcher so a shared mod just needs to be run once.
+    # Self-install the menu launcher (app menu / Start Menu) so a shared mod just
+    # needs to be run once.
     if config.launcher:
         from .launcher import ensure_launcher
         made = ensure_launcher()
         if made:
-            log.info("app-menu launcher: %s", made)
+            log.info("menu launcher: %s", made)
 
     link_task = asyncio.create_task(link.run(), name="x4link")
     poll_task = asyncio.create_task(_poll_x4(link, status), name="x4poll")

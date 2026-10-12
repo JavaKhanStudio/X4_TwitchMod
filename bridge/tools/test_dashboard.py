@@ -66,8 +66,18 @@ try:
               and icon.read().lstrip().startswith(b"<svg"), f"GET /{path} -> the SVG mark")
     check('id="cdtoggle"' in html, "page has the disable-cooldowns checkbox")
     check('id="capstoggle"' in html, "page has the disable-purchase-limits checkbox")
+    # The crisis switch is the only consent gate in the UI: if the checkbox or the
+    # action it POSTs goes missing, tier-3 events become permanently unbuyable with
+    # no way to notice from the page itself.
+    check('id="crisistoggle"' in html and "action:'crisis'" in html,
+          "page has the accept-crisis-level checkbox, wired to the crisis action")
 finally:
     d.stop()
+
+
+root = Path(__file__).resolve().parents[2]
+check((root / "icon.svg").read_bytes() == (root / "docs/catalog/icon.svg").read_bytes(),
+      "docs/catalog/icon.svg is the same mark as icon.svg (copy it after a redraw)")
 
 
 # --- Moderation endpoints (/api/admin, /api/viewers) ---
@@ -75,11 +85,6 @@ finally:
 # here we run it inline — the endpoint wiring is what we're testing).
 w = Wallet(tempfile.mktemp(suffix=".json"))
 rt = Runtime()
-
-
-root = Path(__file__).resolve().parents[2]
-check((root / "icon.svg").read_bytes() == (root / "docs/catalog/icon.svg").read_bytes(),
-      "docs/catalog/icon.svg is the same mark as icon.svg (copy it after a redraw)")
 
 
 def on_admin(body):

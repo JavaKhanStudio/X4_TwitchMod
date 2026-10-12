@@ -33,6 +33,10 @@ COMMAND = "cmd"        # a permission/cooldown-checked game action
 SAY = "say"            # post a message to chat (Helix)
 ACTION = "action"      # generic future action (ban, shoutout, ...)
 HELLO = "hello"        # handshake from X4 on connect
+CMDFAIL = "cmdfail"    # a `cmd` could not be carried out -> refund the buyer
+FLEET = "fleet"        # the player's ship roster (see fleet.py for the row format)
+SHIPDOWN = "shipdown"  # an ADOPTED ship was destroyed (idcode, macro, killer)
+SHIPNEW = "shipnew"    # a resurrected hull exists: {old: <id>, idcode: <new id>}
 
 # companion <-> X4 (status panel + the in-game Enable-Twitch toggle; doc 09 §6)
 STATUS = "status"      # companion -> X4: connection / viewer-count for the in-game panel
@@ -90,8 +94,17 @@ def ready() -> dict[str, Any]:
 def command(action: str, by: str, args: dict[str, Any] | None = None,
             tier: int | None = None) -> dict[str, Any]:
     """A vetted game action (post-policy). `action` is the id X4 dispatches on.
-    `tier` (0..3, doc 08 §5) lets MD apply shared severity-aware safety."""
-    msg: dict[str, Any] = {"t": COMMAND, "id": action, "by": by, "args": args or {}}
+    `tier` (0..3, doc 08 §5) lets MD apply shared severity-aware safety.
+
+    `argv` carries the SAME values as `args`, as an ORDERED array, and is what the
+    mod actually reads. `args` is a JSON object; the ui lua decodes it into a Lua
+    hash table whose `pairs()` order is undefined — verified: {"ware","qty"} came
+    back as "50;energycells". JSON arrays keep their order through the decoder, so
+    multi-arg commands only survive the trip via `argv`. `args` stays for logs and
+    for anything reading a value by name."""
+    args = args or {}
+    msg: dict[str, Any] = {"t": COMMAND, "id": action, "by": by, "args": args,
+                           "argv": [str(v) for v in args.values()]}
     if tier is not None:
         msg["tier"] = tier
     return msg
@@ -99,9 +112,48 @@ def command(action: str, by: str, args: dict[str, Any] | None = None,
 
 # ---- constructors (X4 -> chat, and companion status) ------------------------
 
+def fleet(data: str, total: int | None = None, sent: int | None = None) -> dict[str, Any]:
+    """X4 -> bridge: the player's ship roster (MD cue Twitch_PublishFleet).
+
+    `data` is rows joined by ';', fields by '|': `IDCODE|MACRO|SIZE`. `total` is how
+    many ships the player actually owns and `sent` how many fit in this line, so a
+    capped roster can never be mistaken for the whole fleet. Defined here (rather
+    than only in MD) so the format has one written-down owner and the tests build it
+    the same way the game does. See fleet.py."""
+    n = len([r for r in data.split(";") if r])
+    return {"t": FLEET, "total": total if total is not None else n,
+            "sent": sent if sent is not None else n, "data": data}
+
+
+def shipdown(idcode: str, macro: str = "", killer: str = "") -> dict[str, Any]:
+    """X4 -> bridge: an adopted ship died (MD cue Twitch_ShipDown).
+
+    `macro` matters more than it looks: once the ship is gone the roster cannot say
+    what it was, and the macro is all that is needed to rebuild it. MD reads it
+    inside the destroyed event, the last moment the object is still readable."""
+    return {"t": SHIPDOWN, "idcode": idcode, "macro": macro, "killer": killer}
+
+
+def shipnew(old: str, idcode: str) -> dict[str, Any]:
+    """X4 -> bridge: a replacement hull was built. A rebuilt ship is a NEW object
+    with a NEW id code, so the adoption has to be re-keyed — only MD learns the new
+    code, which is why it reports back rather than the bridge assuming."""
+    return {"t": SHIPNEW, "old": old, "idcode": idcode}
+
+
 def say(msg: str) -> dict[str, Any]:
     """Ask the bridge to post `msg` to Twitch chat (via the source / Helix)."""
     return {"t": SAY, "msg": msg}
+
+
+def cmdfail(action: str, reason: str = "") -> dict[str, Any]:
+    """X4 could not carry out a `cmd` -> the bridge refunds whoever bought it.
+
+    Only the action id and a human reason cross the pipe: MD has no idea who the
+    buyer was (the `by` field never reaches it — the ui lua forwards only the arg
+    VALUES), so the bridge matches this against its own record of what it charged
+    for that action. See Economy.handle_x4_failure."""
+    return {"t": CMDFAIL, "id": action, "reason": reason}
 
 
 def status(*, connected: bool, channel: str = "", viewers: int = 0,

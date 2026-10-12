@@ -53,6 +53,18 @@ class Command:
     cooldown: float = 0.0                    # global cooldown, seconds
     user_cooldown: float = 0.0               # per-user cooldown, seconds
     arg_names: list[str] = field(default_factory=list)  # chat tokens -> named args
+    # Constant args baked into the command, for triggers that carry no usable ones.
+    # On a CHAT trigger they are defaults that typed tokens override. On an EVENT
+    # trigger they REPLACE the event's args entirely — deliberately, because the ui
+    # lua ';'-joins arg values into one string for MD, so letting a raid's
+    # {"viewers": 12} ride along would turn the mood word "excited" into
+    # "excited;12" and no MD string compare would ever match it.
+    fixed_args: dict[str, str] = field(default_factory=dict)
+    # Crisis-level (tier 3): refuses to fire unless the streamer has ticked "accept
+    # crisis level" in the dashboard (Runtime.crisis_enabled). Set it on any command
+    # whose MD cue can cost the player the save — the switch is the consent, and a
+    # moderator's test hook needs it just as much as a viewer's purchase does.
+    crisis: bool = False
 
 
 class CommandEngine:
@@ -87,14 +99,18 @@ class CommandEngine:
             return []
         user = event.get("user", "?")
         role = role_of(event.get("badges"))
+        if not self._crisis_ok(cmd):
+            log.debug("deny %s for %s (crisis events are off)", cmd.id, user)
+            return []
         if ROLE_RANK[role] < ROLE_RANK[cmd.min_role]:
             log.debug("deny %s for %s (role %s < %s)", cmd.id, user, role, cmd.min_role)
             return []
         if not self._cooldown_ok(cmd, user):
             log.debug("cooldown %s for %s", cmd.id, user)
             return []
-        args = {name: tokens[i + 1] for i, name in enumerate(cmd.arg_names)
-                if i + 1 < len(tokens)}
+        args = dict(cmd.fixed_args)
+        args.update({name: tokens[i + 1] for i, name in enumerate(cmd.arg_names)
+                     if i + 1 < len(tokens)})
         return [protocol.command(cmd.action, user, args)]
 
     def _event(self, event: dict) -> list[dict]:
@@ -103,11 +119,22 @@ class CommandEngine:
         for cmd in cmds:
             if cmd.reward and event.get("reward") != cmd.reward:
                 continue
+            if not self._crisis_ok(cmd):
+                continue
             user = event.get("user", "?")
             if not self._cooldown_ok(cmd, user):  # events skip role gating
                 continue
-            out.append(protocol.command(cmd.action, user, _event_args(event)))
+            args = dict(cmd.fixed_args) if cmd.fixed_args else _event_args(event)
+            out.append(protocol.command(cmd.action, user, args))
         return out
+
+    # ---- gates -------------------------------------------------------------
+
+    def _crisis_ok(self, cmd: Command) -> bool:
+        """A crisis command needs the streamer's live consent; everything else is
+        unaffected. Checked BEFORE the cooldown so a refused attempt doesn't start
+        the clock — the answer would be the same a minute later anyway."""
+        return (not cmd.crisis) or self.rt.crisis_enabled
 
     # ---- cooldown ----------------------------------------------------------
 
