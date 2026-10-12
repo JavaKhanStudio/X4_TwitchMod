@@ -7,7 +7,7 @@ the game sends back (X4 -> bridge, e.g. "say this in chat" via Helix).
 from __future__ import annotations
 
 import logging
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 log = logging.getLogger("source")
 

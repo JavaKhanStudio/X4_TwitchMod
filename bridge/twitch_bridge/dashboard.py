@@ -501,7 +501,7 @@ class Dashboard:
     def url(self) -> str:
         return f"http://{self.host}:{self.port}/"
 
-    def start(self) -> "Dashboard":
+    def start(self) -> Dashboard:
         handler = type("Handler", (_Handler,), {
             "status": self.status,
             "on_connect": staticmethod(self.on_connect) if self.on_connect else None,

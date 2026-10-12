@@ -11,7 +11,7 @@ import asyncio
 import json
 import logging
 import sys
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from .. import protocol
 from .base import Source

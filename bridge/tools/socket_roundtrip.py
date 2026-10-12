@@ -58,7 +58,7 @@ def main() -> int:
     while time.time() < deadline:
         try:
             chunk = s.recv(4096)
-        except socket.timeout:
+        except TimeoutError:
             if got:  # already saw the reply; no need to keep waiting
                 break
             continue

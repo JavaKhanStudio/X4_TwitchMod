@@ -17,7 +17,7 @@ def _default_socket() -> str:
     # Windows: X4's winpipe connects (as CLIENT) to \\.\pipe\<name>; the bridge
     # HOSTS that pipe (see x4link/winpipe.py + docs/02 Path A).
     if sys.platform == "win32":
-        return r"\\.\pipe\%s" % PIPE_NAME
+        return rf"\\.\pipe\{PIPE_NAME}"
 
     # Linux: the bekopharm linux-compat fork hosts the Unix socket in the X4
     # savegame folder (the only dir X4 Lua can unlink). A `.xml` extension lets X4

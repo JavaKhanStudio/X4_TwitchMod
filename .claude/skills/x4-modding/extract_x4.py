@@ -31,7 +31,7 @@ def build_index(x4):
         if not os.path.exists(dat):
             continue
         off = 0
-        with open(cat, "r", encoding="utf-8", errors="replace") as f:
+        with open(cat, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip("\r\n")
                 if not line:

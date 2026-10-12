@@ -22,7 +22,7 @@ import sys
 def _iter_index(cat_path: str):
     """Yield (path, offset, size) for each entry in one .cat, in dat order."""
     offset = 0
-    with open(cat_path, "r", encoding="utf-8", errors="replace") as f:
+    with open(cat_path, encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.rstrip("\n")
             if not line:
