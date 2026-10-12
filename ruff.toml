@@ -1,0 +1,9 @@
+# ruff runs on its defaults; this only tells it about the `# noqa` codes we keep
+# for OTHER linters, so RUF100 stops calling them unused.
+[lint]
+# E402: imports after `sys.path.insert` in bridge/tools. ruff exempts sys.path
+# edits from E402, pycodestyle (flake8, editors) does not.
+# N802: do_GET / do_POST, names http.server dictates (pep8-naming).
+# BLE001: blind excepts kept on purpose. Listing it does not switch the rule off;
+# ruff only stops judging whether each marker is still needed.
+external = ["E402", "N802", "BLE001"]
