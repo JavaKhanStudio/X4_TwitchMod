@@ -36,6 +36,7 @@
   .s-planned{background:#9aa0c31f;color:#b9bedd}.s-suggested{background:#c678dd22;color:#e0a9f0}
   .k-good{color:#7ee2a8}.k-neutral{color:var(--dim)}.k-bad{color:#ffce7a}.k-doom{color:#ff9a9a}
   .desc{color:var(--dim);font-size:13px}
+  .desc code{font-family:ui-monospace,monospace;font-size:12px;color:#56b6ff}
   td.nick{font-family:ui-monospace,monospace;color:var(--dim);font-size:12px}
   .empty{color:var(--dim);padding:20px;text-align:center}
   footer{color:var(--dim);font-size:12px;margin-top:14px;display:flex;flex-wrap:wrap;gap:6px 18px}
@@ -76,7 +77,9 @@ const TIERN={'-1':'Debug',0:'Pure',1:'Minor',2:'Major',3:'Doom'};
 const SRANK={live:0,wip:1,planned:2,suggested:3};
 let DATA=[], tier='all', kind='all', status='all', q='', sortK='status', asc=true;
 function esc(t){return (t??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
-function cost(r){return r.cost_per_unit?(r.cost_per_unit+'/'+(r.unit||'unit')):r.cost}
+// `!buy x` in a description -> <code>; runs on already-escaped text
+function code(h){return h.replace(/`([^`]+)`/g,'<code>$1</code>')}
+function cost(r){return r.price_note?r.price_note:r.cost_per_unit?(r.cost_per_unit+'/'+(r.unit||'unit')):r.cost}
 function render(){
   let rows=DATA.filter(r=>(tier==='all'||r.tier==+tier)&&(kind==='all'||r.kind===kind)
     &&(status==='all'||r.status===status));
@@ -96,7 +99,7 @@ function render(){
     <td><span class="b t${r.tier}">${TIERN[r.tier]}</span></td>
     <td class="k-${esc(r.karma)}">${esc(r.karma)}</td>
     <td>${r.cooldown?Math.round(r.cooldown)+'s':'—'}</td>
-    <td class="desc">${esc(r.description)}</td></tr>`).join('');
+    <td class="desc">${code(esc(r.description))}</td></tr>`).join('');
   $('#empty').style.display=rows.length?'none':'';
   const c={};DATA.forEach(r=>c[r.status]=(c[r.status]||0)+1);
   $('#counts').textContent=['live','wip','planned','suggested'].map(s=>(c[s]||0)+' '+s).join(' · ');
