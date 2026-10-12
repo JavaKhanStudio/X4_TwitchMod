@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 
 from . import protocol, setup_store
+from .admin import Admin
 from .catalog import STARTER
 from .commands import CommandEngine
 from .config import Config
@@ -52,31 +53,48 @@ async def _award_loop(wallet: Wallet, status) -> None:
         pass
 
 
+def _apply_saved_creds(config: Config) -> None:
+    """Load persisted Twitch app creds (from the dashboard's Connect button) so the
+    twitch source auto-connects on subsequent runs. Env vars still win if set."""
+    if config.source != "twitch":
+        return
+    saved = setup_store.load()
+    config.client_id = config.client_id or saved.get("client_id", "")
+    config.client_secret = config.client_secret or saved.get("client_secret", "")
+    config.channel = config.channel or saved.get("channel", "")
+
+
+def _connect_from_dashboard(body: dict, source, loop) -> None:
+    """Called from the dashboard thread when the user clicks Connect.
+    Blank fields fall back to the saved values — so the user never has to
+    re-enter the secret (Twitch shows it only once)."""
+    saved = setup_store.load()
+    cid = (body.get("client_id") or "").strip() or saved.get("client_id", "")
+    secret = (body.get("client_secret") or "").strip() or saved.get("client_secret", "")
+    chan = (body.get("channel") or "").strip() or saved.get("channel", "")
+    if not (cid and secret):
+        return
+    setup_store.save({"client_id": cid, "client_secret": secret, "channel": chan})
+    if hasattr(source, "connect"):
+        asyncio.run_coroutine_threadsafe(source.connect(cid, secret, chan), loop)
+
+
+def _open_browser(url: str) -> None:
+    try:
+        import webbrowser
+        webbrowser.open(url)
+    except Exception as e:  # never let opening a browser kill the companion
+        log.warning("could not auto-open browser (%s) — open %s manually", e, url)
+
+
 async def main(config: Config) -> None:
     from .status import Status
 
-    # Load persisted Twitch app creds (from the dashboard's Connect button) so the
-    # twitch source auto-connects on subsequent runs. Env vars still win if set.
-    if config.source == "twitch":
-        saved = setup_store.load()
-        config.client_id = config.client_id or saved.get("client_id", "")
-        config.client_secret = config.client_secret or saved.get("client_secret", "")
-        config.channel = config.channel or saved.get("channel", "")
-
+    _apply_saved_creds(config)
     source = make_source(config)
     runtime = Runtime()   # live testing switches, toggled from the dashboard
     engine = CommandEngine(STARTER, runtime=runtime)
     status = Status(source=source.name, channel=config.channel, socket_path=config.socket_path)
-    def publish_flags() -> None:
-        """Push the WHOLE live-switch set to the dashboard. Status.set_flags replaces
-        the dict rather than merging, so a partial push silently unsyncs the other
-        checkboxes."""
-        status.set_flags({"cooldowns_enabled": runtime.cooldowns_enabled,
-                          "caps_enabled": runtime.caps_enabled,
-                          "stations_to_player": runtime.stations_to_player,
-                          "crisis_enabled": runtime.crisis_enabled})
-
-    publish_flags()
 
     # If this is the twitch source, mirror its connection state into the dashboard.
     if hasattr(source, "set_status_cb"):
@@ -96,18 +114,7 @@ async def main(config: Config) -> None:
         loop.call_soon_threadsafe(stop_event.set)
 
     def on_connect(body: dict) -> None:
-        """Called from the dashboard thread when the user clicks Connect.
-        Blank fields fall back to the saved values — so the user never has to
-        re-enter the secret (Twitch shows it only once)."""
-        saved = setup_store.load()
-        cid = (body.get("client_id") or "").strip() or saved.get("client_id", "")
-        secret = (body.get("client_secret") or "").strip() or saved.get("client_secret", "")
-        chan = (body.get("channel") or "").strip() or saved.get("channel", "")
-        if not (cid and secret):
-            return
-        setup_store.save({"client_id": cid, "client_secret": secret, "channel": chan})
-        if hasattr(source, "connect"):
-            asyncio.run_coroutine_threadsafe(source.connect(cid, secret, chan), loop)
+        _connect_from_dashboard(body, source, loop)
 
     def on_disconnect() -> None:
         if hasattr(source, "disconnect"):
@@ -122,83 +129,14 @@ async def main(config: Config) -> None:
         econ = Economy(wallet, runtime=runtime, fleet=fleet)
         status.set_econ(wallet.stats())
 
+    admin = Admin(runtime, status, wallet=wallet, fleet=fleet)
+    admin.publish_flags()
+
     def on_admin(body: dict) -> dict:
-        """Dashboard actions (give coins / block viewers / testing toggles). Runs on
-        the event loop so wallet + runtime changes never race the loop's own reads.
-        Called from the dashboard's daemon thread."""
-
-        async def run() -> dict:
-            action = (body.get("action") or "").strip()
-            target = (body.get("user") or "").strip().lstrip("@").lower()
-            # runtime testing toggles work with or without the economy
-            if action == "stationowner":
-                runtime.stations_to_player = bool(body.get("value"))
-                publish_flags()
-                status.note("stations now go to "
-                            + ("the PLAYER" if runtime.stations_to_player else "the Twitch Allies"))
-                return {"ok": True, "stations_to_player": runtime.stations_to_player}
-            if action == "crisis":
-                runtime.crisis_enabled = bool(body.get("value"))
-                publish_flags()
-                status.note("CRISIS LEVEL ACCEPTED — tier-3 events can be bought"
-                            if runtime.crisis_enabled else "crisis events are off again")
-                return {"ok": True, "crisis_enabled": runtime.crisis_enabled}
-            if action in ("cooldowns", "caps"):
-                field = "cooldowns_enabled" if action == "cooldowns" else "caps_enabled"
-                setattr(runtime, field, bool(body.get("value")))
-                publish_flags()
-                label = "cooldowns" if action == "cooldowns" else "purchase limits"
-                status.note(f"testing: {label} {'ON' if getattr(runtime, field) else 'OFF'}")
-                return {"ok": True, field: getattr(runtime, field)}
-            if wallet is None:
-                return {"ok": False, "error": "economy is off"}
-            if action == "list":
-                # The moderation table. Each viewer carries their adopted ship, so a
-                # mod looking at "who is this person" sees what they hold in the game
-                # without cross-referencing a second panel.
-                rows = wallet.viewer_list()
-                if fleet is not None:
-                    for r in rows:
-                        r["ships"] = [fleet.card(c) for c in fleet.ships_of(r["username"])]
-                return {"ok": True, "viewers": rows}
-            if action == "adoptions":
-                # Who holds what right now, plus the full lifecycle log. Read-only:
-                # the dashboard shows it, nothing acts on it.
-                if fleet is None:
-                    return {"ok": False, "error": "the fleet is not tracked"}
-                current = [dict(fleet.card(code), user=who)
-                           for code, who in fleet.adoptions.items()]
-                current.sort(key=lambda r: (r["user"], r["idcode"]))
-                return {"ok": True, "adoptions": current,
-                        "history": list(reversed(fleet.history))}
-            if action == "giveall":
-                amount = int(body.get("amount") or 0)
-                for v in list(wallet.viewers.values()):
-                    wallet.give_coins(v.username, amount)
-                wallet.save()
-                status.set_econ(wallet.stats())
-                status.note(f"admin: gave {amount} coins to all {len(wallet.viewers)} viewers")
-                return {"ok": True, "count": len(wallet.viewers), "amount": amount}
-            if not target:
-                return {"ok": False, "error": "a viewer name is required"}
-            if action == "give":
-                amount = int(body.get("amount") or 0)
-                coins = wallet.give_coins(target, amount)
-                wallet.save()
-                status.set_econ(wallet.stats())
-                status.note(f"admin: gave {amount} coins to {target} (now {coins})")
-                return {"ok": True, "user": target, "coins": coins}
-            if action in ("ban", "unban"):
-                v = wallet.set_banned(target, action == "ban")
-                wallet.save()
-                status.note(f"admin: {'blocked' if v.banned else 'unblocked'} {target}")
-                return {"ok": True, "user": target, "banned": v.banned}
-            return {"ok": False, "error": f"unknown action '{action}'"}
-
+        """Dashboard actions (admin.py). Called from the dashboard's daemon thread;
+        runs on the event loop so wallet + runtime changes never race its reads."""
         try:
-            return asyncio.run_coroutine_threadsafe(run(), loop).result(timeout=5)
-        except (ValueError, TypeError):
-            return {"ok": False, "error": "invalid amount"}
+            return asyncio.run_coroutine_threadsafe(admin.run(body), loop).result(timeout=5)
         except Exception as e:  # noqa: BLE001 — never let the dashboard thread crash
             return {"ok": False, "error": str(e)}
 
@@ -256,11 +194,7 @@ async def main(config: Config) -> None:
                          on_admin=on_admin, on_restart=request_restart).start()
         log.info("companion dashboard → %s  (open this in your browser)", dash.url)
         if config.open_browser:
-            try:
-                import webbrowser
-                webbrowser.open(dash.url)
-            except Exception as e:  # never let opening a browser kill the companion
-                log.warning("could not auto-open browser (%s) — open %s manually", e, dash.url)
+            _open_browser(dash.url)
 
     # Self-install the menu launcher (app menu / Start Menu) so a shared mod just
     # needs to be run once.

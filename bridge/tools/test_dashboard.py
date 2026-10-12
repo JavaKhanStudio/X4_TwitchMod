@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Unit test: Status accounting + the dashboard HTTP endpoints. Stdlib only."""
+import asyncio
 import json
 import sys
 import tempfile
@@ -8,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from twitch_bridge.admin import Admin  # noqa: E402
 from twitch_bridge.dashboard import Dashboard  # noqa: E402
 from twitch_bridge.runtime import Runtime  # noqa: E402
 from twitch_bridge.status import Status, describe  # noqa: E402
@@ -81,32 +83,16 @@ check((root / "icon.svg").read_bytes() == (root / "docs/catalog/icon.svg").read_
 
 
 # --- Moderation endpoints (/api/admin, /api/viewers) ---
-# A synchronous on_admin backed by a real Wallet (in the app it hops onto the loop;
-# here we run it inline — the endpoint wiring is what we're testing).
+# The REAL admin actions (twitch_bridge/admin.py) backed by a real Wallet. In the app
+# on_admin hops onto the loop; here asyncio.run drives it inline, because the endpoint
+# wiring and the actions are what we're testing.
 w = Wallet(tempfile.mktemp(suffix=".json"))
 rt = Runtime()
+admin = Admin(rt, Status(source="stdin"), wallet=w)
 
 
 def on_admin(body):
-    action = body.get("action")
-    target = (body.get("user") or "").lstrip("@").lower()
-    if action == "cooldowns":
-        rt.cooldowns_enabled = bool(body.get("value"))
-        return {"ok": True, "cooldowns_enabled": rt.cooldowns_enabled}
-    if action == "caps":
-        rt.caps_enabled = bool(body.get("value"))
-        return {"ok": True, "caps_enabled": rt.caps_enabled}
-    if action == "list":
-        return {"ok": True, "viewers": w.viewer_list()}
-    if action == "give":
-        return {"ok": True, "user": target, "coins": w.give_coins(target, int(body.get("amount", 0)))}
-    if action == "giveall":
-        for v in list(w.viewers.values()):
-            w.give_coins(v.username, int(body.get("amount", 0)))
-        return {"ok": True, "count": len(w.viewers)}
-    if action in ("ban", "unban"):
-        return {"ok": True, "user": target, "banned": w.set_banned(target, action == "ban").banned}
-    return {"ok": False, "error": "unknown"}
+    return asyncio.run(admin.run(body))
 
 
 def post(url, payload):
@@ -143,6 +129,24 @@ try:
     r = post(d2.url + "api/admin", {"action": "caps", "value": True})
     check(r["caps_enabled"] is True and rt.caps_enabled is True,
           "POST /api/admin caps=on re-enables them")
+    r = post(d2.url + "api/admin", {"action": "stationowner", "value": True})
+    check(r["ok"] and r["stations_to_player"] is True and rt.stations_to_player is True,
+          "POST /api/admin stationowner=on sends stations to the player")
+    r = post(d2.url + "api/admin", {"action": "give", "amount": 5})
+    check(not r["ok"] and r["error"] == "a viewer name is required",
+          "POST /api/admin give without a viewer is refused")
+    r = post(d2.url + "api/admin", {"action": "give", "user": "bob", "amount": "lots"})
+    check(not r["ok"] and r["error"] == "invalid amount", "a non-numeric amount is refused")
+    r = post(d2.url + "api/admin", {"action": "adoptions"})
+    check(not r["ok"] and r["error"] == "the fleet is not tracked",
+          "POST /api/admin adoptions without a fleet says so")
+    r = post(d2.url + "api/admin", {"action": "nosuch", "user": "bob"})
+    check(not r["ok"] and r["error"] == "unknown action 'nosuch'", "an unknown action is named")
+    r = asyncio.run(Admin(Runtime(), Status(source="stdin")).run({"action": "list"}))
+    check(r == {"ok": False, "error": "economy is off"},
+          "with the economy off, a wallet action says so")
+    r = asyncio.run(Admin(Runtime(), Status(source="stdin")).run({"action": "crisis", "value": True}))
+    check(r == {"ok": True, "crisis_enabled": True}, "a runtime switch works with the economy off")
 finally:
     d2.stop()
 
