@@ -8,8 +8,8 @@ or a `say` (to chat). Pure logic over a Wallet + the CATALOG — fully unit-test
 from __future__ import annotations
 
 import time
-from typing import ClassVar
 from collections import deque
+from typing import ClassVar
 
 from . import protocol
 from . import sectors as sectorreg
@@ -83,6 +83,23 @@ class Economy:
         self._refundable: deque[tuple[float, str, str, int, int, str]] = deque()
         # alias ("!bal") -> canonical ("balance")
         self._canon = {f"!{a.lower()}": c for c, al in COMMAND_ALIASES.items() for a in al}
+        # canonical command -> its handler, each called (user, role, tok)
+        self._handlers = {
+            "balance": self._cmd_balance, "karma": self._cmd_karma,
+            "shop": self._cmd_shop, "sectors": self._cmd_sectors,
+            "fleet": self._cmd_fleet, "myship": self._cmd_myship,
+            "abandon_ship": lambda u, r, t: self._abandon(u, r, t[1:]),
+            "resurrect_ship": lambda u, r, t: self._resurrect(u, r, t[1:]),
+            "gift": lambda u, r, t: self._gift(u, t),
+            "buy": self._buy,
+            "givecoins": self._cmd_admin, "giveallcoins": self._cmd_admin,
+            "setkarma": self._cmd_admin,
+        }
+        # StoreEvent.arg_domain -> its resolver (_canon_args)
+        self._arg_resolvers = {
+            "sector": self._args_sector, "faction_stance": self._args_faction_stance,
+            "faction": self._args_tokens,
+        }
 
     # -- public: process one chat message -----------------------------------
     def handle_chat(self, event: dict) -> list[dict]:
@@ -96,63 +113,50 @@ class Economy:
             return []
         tok = msg.split()
         canon = self._canon.get(tok[0].lower())   # resolve any alias to its canonical command
+        handler = self._handlers.get(canon)
+        return handler(user, role, tok) if handler else []
 
-        if canon == "balance":
-            v = self.w.get(user)
-            return [protocol.say(f"@{user} balance: {v.coins} coins · karma {v.karma}%")]
-        if canon == "karma":
-            return [protocol.say(f"@{user} karma is a % that multiplies your coin income; "
-                                 f"buying good events raises it, bad/doom events lower it. You: "
-                                 f"{self.w.get(user).karma}%")]
-        if canon == "shop":
-            # Crisis events are left OUT of the teaser while the switch is off —
-            # they sort near the front alphabetically ("armada"), and advertising a
-            # key that answers "not right now" reads as broken, not as gated.
-            keys = sorted({e.buy_key for e in self.by_key.values()
-                           if e.enabled and (self.rt.crisis_enabled or not e.crisis)})
-            return [protocol.say(f"@{user} buy events with !buy <key>. Try !buy "
-                                 + ", ".join(keys[:6]))]
-        if canon == "sectors":
-            return [protocol.say(self._sector_msg(user, " ".join(tok[1:])))]
-        if canon == "fleet":
-            return [protocol.say(self._fleet_list_msg(user, " ".join(tok[1:])))]
-        if canon == "myship":
-            arg = " ".join(tok[1:]).strip()
-            if arg and self.fleet is not None and self.fleet.seen:
-                return [protocol.say(self._ship_detail_msg(user, arg))]
-            return [protocol.say(self._myship_msg(user))]
-        if canon == "abandon_ship":
-            return self._abandon(user, role, tok[1:])
-        if canon == "resurrect_ship":
-            return self._resurrect(user, role, tok[1:])
-        if canon == "gift":
-            return self._gift(user, tok)
-        if canon == "buy":
-            return self._buy(user, role, tok)
-        # admin (mod/broadcaster only)
-        if canon in ("givecoins", "giveallcoins", "setkarma") and ROLE_RANK[role] >= ROLE_RANK["moderator"]:
-            return self._admin(canon, tok)
-        return []
+    def _cmd_balance(self, user: str, role: str, tok: list[str]) -> list[dict]:
+        v = self.w.get(user)
+        return [protocol.say(f"@{user} balance: {v.coins} coins · karma {v.karma}%")]
+
+    def _cmd_karma(self, user: str, role: str, tok: list[str]) -> list[dict]:
+        return [protocol.say(f"@{user} karma is a % that multiplies your coin income; "
+                             f"buying good events raises it, bad/doom events lower it. You: "
+                             f"{self.w.get(user).karma}%")]
+
+    def _cmd_shop(self, user: str, role: str, tok: list[str]) -> list[dict]:
+        # Crisis events are left OUT of the teaser while the switch is off —
+        # they sort near the front alphabetically ("armada"), and advertising a
+        # key that answers "not right now" reads as broken, not as gated.
+        keys = sorted({e.buy_key for e in self.by_key.values()
+                       if e.enabled and (self.rt.crisis_enabled or not e.crisis)})
+        return [protocol.say(f"@{user} buy events with !buy <key>. Try !buy "
+                             + ", ".join(keys[:6]))]
+
+    def _cmd_sectors(self, user: str, role: str, tok: list[str]) -> list[dict]:
+        return [protocol.say(self._sector_msg(user, " ".join(tok[1:])))]
+
+    def _cmd_fleet(self, user: str, role: str, tok: list[str]) -> list[dict]:
+        return [protocol.say(self._fleet_list_msg(user, " ".join(tok[1:])))]
+
+    def _cmd_myship(self, user: str, role: str, tok: list[str]) -> list[dict]:
+        arg = " ".join(tok[1:]).strip()
+        if arg and self.fleet is not None and self.fleet.seen:
+            return [protocol.say(self._ship_detail_msg(user, arg))]
+        return [protocol.say(self._myship_msg(user))]
+
+    def _cmd_admin(self, user: str, role: str, tok: list[str]) -> list[dict]:
+        # mod/broadcaster only; anyone else gets silence, as for an unknown command
+        if ROLE_RANK[role] < ROLE_RANK["moderator"]:
+            return []
+        return self._admin(self._canon[tok[0].lower()], tok)
 
     # -- the purchase pipeline (doc 08 §4.1) --------------------------------
     def _buy(self, user: str, role: str, tok: list[str]) -> list[dict]:
-        if self.w.get(user).banned:
-            return []   # blocked viewers are silently ignored (no engagement)
-        if len(tok) < 2:
-            return [protocol.say(f"@{user} usage: !buy <key> [args]")]
-        # "!buy station" isn't one purchase — station types are separate events (each
-        # is its own MD cue), so answer with the menu instead of "not available".
-        if tok[1].lower() in ("station", "stations"):
-            return [protocol.say(self._station_list_msg(user))]
-        ev = self.by_key.get(tok[1].lower())
-        if ev is None or not ev.enabled:
-            return [protocol.say(f"@{user} '{tok[1]}' is not available.")]
-        # Crisis level (tier 3). Refused BEFORE anything is charged, and phrased as
-        # a locked door rather than a missing item: the event is real, it is in the
-        # shop, and it becomes buyable the moment the streamer ticks the box.
-        if ev.crisis and not self.rt.crisis_enabled:
-            return [protocol.say(f"@{user} {ev.label or ev.buy_key} is a CRISIS-level event "
-                                 f"and the streamer has not accepted crisis level. Ask nicely.")]
+        ev, refused = self._buy_event(user, tok)
+        if ev is None:
+            return refused
 
         if ev.ship_picker:                       # "!buy ship <name>" — priced per ship
             return self._buy_ship(user, role, ev, tok[2:])
@@ -167,14 +171,9 @@ class Economy:
         if err:
             return [protocol.say(f"@{user} {err}")]
 
-        if ROLE_RANK[role] < ROLE_RANK[ev.min_role]:
-            return [protocol.say(f"@{user} {ev.label or ev.buy_key} needs {ev.min_role}.")]
-        if self.w.get(user).coins < cost:
-            return [protocol.say(f"@{user} not enough coins: {ev.label or ev.buy_key} costs "
-                                 f"{cost}, you have {self.w.get(user).coins}.")]
-        capped = self._cap_check(ev)
-        if capped:
-            return [protocol.say(f"@{user} {capped}")]
+        refused = self._gate(user, role, ev, cost, ev.label or ev.buy_key)
+        if refused:
+            return refused
 
         # commit
         karma_before = self.w.get(user).karma
@@ -189,6 +188,28 @@ class Economy:
             protocol.say(f"@{user} bought {ev.label or ev.buy_key} for {cost} — "
                          f"{bal.coins} coins left (karma {bal.karma}%)"),
         ]
+
+    def _buy_event(self, user: str, tok: list[str]) -> tuple[StoreEvent | None, list[dict]]:
+        """The event a "!buy <key> ..." names, or None and what to answer instead."""
+        if self.w.get(user).banned:
+            return None, []   # blocked viewers are silently ignored (no engagement)
+        if len(tok) < 2:
+            return None, [protocol.say(f"@{user} usage: !buy <key> [args]")]
+        # "!buy station" isn't one purchase — station types are separate events (each
+        # is its own MD cue), so answer with the menu instead of "not available".
+        if tok[1].lower() in ("station", "stations"):
+            return None, [protocol.say(self._station_list_msg(user))]
+        ev = self.by_key.get(tok[1].lower())
+        if ev is None or not ev.enabled:
+            return None, [protocol.say(f"@{user} '{tok[1]}' is not available.")]
+        # Crisis level (tier 3). Refused BEFORE anything is charged, and phrased as
+        # a locked door rather than a missing item: the event is real, it is in the
+        # shop, and it becomes buyable the moment the streamer ticks the box.
+        if ev.crisis and not self.rt.crisis_enabled:
+            return None, [protocol.say(
+                f"@{user} {ev.label or ev.buy_key} is a CRISIS-level event "
+                f"and the streamer has not accepted crisis level. Ask nicely.")]
+        return ev, []
 
     def _gate(self, user: str, role: str, ev: StoreEvent, cost: int,
               label: str) -> list[dict] | None:
@@ -583,63 +604,67 @@ class Economy:
         didn't get. Anything unresolvable is now refused up front instead."""
         if not ev.arg_domain:
             return argvals, None
-        if ev.arg_domain == "sector":
-            # A station buy resolves to exactly TWO values: WHERE and WHO OWNS IT.
-            #   !buy wharf                    -> here,        default owner
-            #   !buy wharf argon prime        -> Argon Prime, default owner
-            #   !buy wharf player             -> here,        the player
-            #   !buy wharf argon prime ally   -> Argon Prime, Twitch Allies
-            # The owner word is taken off the END first, because a sector name is
-            # MULTI-WORD ("second contact ii flashpoint") and swallows anything left.
-            # Events whose owner is FIXED (a Raider den, a Kha'ak hive) declare no
-            # `owner` arg and stay single-valued — nobody gets to put a Kha'ak hive
-            # on the player's account.
-            choosable = "owner" in ev.args
-            argvals, owner = self._split_owner(argvals) if choosable else (argvals, "")
-            tail = [owner] if choosable else []
-            # What goes to MD is the sector's MACRO name — the only form it can turn
-            # back into a sector (find_sector macro="macro.{$m}"). Empty is
-            # meaningful: MD reads it as "the player's current sector".
-            sector, suggestions, here = sectorreg.resolve(" ".join(argvals))
-            if here:
-                return [""] + tail, None
-            if sector is None:
-                if suggestions:
-                    names = ", ".join(s.label for s in suggestions[:6])
-                    return argvals, f"which sector? {names}"
-                return argvals, (f"no sector called '{' '.join(argvals)}'. Leave it off for "
-                                 "the player's current sector, or try !sectors <name>.")
-            return [sector.macro] + tail, None
-        if ev.arg_domain == "faction_stance":
-            # Exactly two values, of DIFFERENT kinds: who, then what stance. Order is
-            # fixed rather than sniffed, because "ally" is legal on both sides (it is
-            # an alias for the twitchally faction AND a stance) and guessing would
-            # turn `!buy stance ally war` into a coin flip.
-            if len(argvals) < 2:
-                return argvals, (f"usage: !buy {ev.buy_key} <faction> <{'|'.join(STANCE_KEYS)}> "
-                                 f"— e.g. !buy {ev.buy_key} paranid war")
-            target = resolve_faction(argvals[0])
-            if target is None:
-                return argvals, (f"'{argvals[0]}' is not a faction. Pick from: "
-                                 + ", ".join(STANCE_TARGETS))
-            if target == "twitchally":
-                return argvals, ("that IS the Twitch faction — name who they should "
-                                 "be ally/neutral/war WITH.")
-            stance = resolve_stance(" ".join(argvals[1:]))
-            if stance is None:
-                return argvals, (f"'{' '.join(argvals[1:])}' is not a stance. Use "
-                                 + ", ".join(STANCE_KEYS) + ".")
-            return [target, stance], None
+        resolve = self._arg_resolvers.get(ev.arg_domain, self._args_tokens)
+        return resolve(ev, argvals)
+
+    def _args_sector(self, ev: StoreEvent, argvals: list[str]):
+        # A station buy resolves to exactly TWO values: WHERE and WHO OWNS IT.
+        #   !buy wharf                    -> here,        default owner
+        #   !buy wharf argon prime        -> Argon Prime, default owner
+        #   !buy wharf player             -> here,        the player
+        #   !buy wharf argon prime ally   -> Argon Prime, Twitch Allies
+        # The owner word is taken off the END first, because a sector name is
+        # MULTI-WORD ("second contact ii flashpoint") and swallows anything left.
+        # Events whose owner is FIXED (a Raider den, a Kha'ak hive) declare no
+        # `owner` arg and stay single-valued — nobody gets to put a Kha'ak hive
+        # on the player's account.
+        choosable = "owner" in ev.args
+        argvals, owner = self._split_owner(argvals) if choosable else (argvals, "")
+        tail = [owner] if choosable else []
+        # What goes to MD is the sector's MACRO name — the only form it can turn
+        # back into a sector (find_sector macro="macro.{$m}"). Empty is
+        # meaningful: MD reads it as "the player's current sector".
+        sector, suggestions, here = sectorreg.resolve(" ".join(argvals))
+        if here:
+            return [""] + tail, None
+        if sector is None:
+            if suggestions:
+                names = ", ".join(s.label for s in suggestions[:6])
+                return argvals, f"which sector? {names}"
+            return argvals, (f"no sector called '{' '.join(argvals)}'. Leave it off for "
+                             "the player's current sector, or try !sectors <name>.")
+        return [sector.macro] + tail, None
+
+    def _args_faction_stance(self, ev: StoreEvent, argvals: list[str]):
+        # Exactly two values, of DIFFERENT kinds: who, then what stance. Order is
+        # fixed rather than sniffed, because "ally" is legal on both sides (it is
+        # an alias for the twitchally faction AND a stance) and guessing would
+        # turn `!buy stance ally war` into a coin flip.
+        if len(argvals) < 2:
+            return argvals, (f"usage: !buy {ev.buy_key} <faction> <{'|'.join(STANCE_KEYS)}> "
+                             f"— e.g. !buy {ev.buy_key} paranid war")
+        target = resolve_faction(argvals[0])
+        if target is None:
+            return argvals, (f"'{argvals[0]}' is not a faction. Pick from: "
+                             + ", ".join(STANCE_TARGETS))
+        if target == "twitchally":
+            return argvals, ("that IS the Twitch faction — name who they should "
+                             "be ally/neutral/war WITH.")
+        stance = resolve_stance(" ".join(argvals[1:]))
+        if stance is None:
+            return argvals, (f"'{' '.join(argvals[1:])}' is not a stance. Use "
+                             + ", ".join(STANCE_KEYS) + ".")
+        return [target, stance], None
+
+    def _args_tokens(self, ev: StoreEvent, argvals: list[str]):
+        """The args one by one (at most len(ev.args)); "faction" ones resolved to keys."""
         argvals = argvals[:len(ev.args)] if ev.args else argvals
         out = []
         for tokn in argvals:
-            if ev.arg_domain == "faction":
-                key = resolve_faction(tokn)
-                if key is None:
-                    return argvals, (f"'{tokn}' is not a faction. Pick from: "
-                                     + ", ".join(FACTION_KEYS))
-            else:
-                key = tokn
+            key = resolve_faction(tokn) if ev.arg_domain == "faction" else tokn
+            if key is None:
+                return argvals, (f"'{tokn}' is not a faction. Pick from: "
+                                 + ", ".join(FACTION_KEYS))
             out.append(key)
         if ev.distinct_args and len(set(out)) != len(out):
             return out, "pick two DIFFERENT factions (or none, for a random pair)."
