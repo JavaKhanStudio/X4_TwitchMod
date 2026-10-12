@@ -16,6 +16,7 @@
   header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
   h1{font-size:18px;margin:0;display:flex;align-items:center;gap:10px}h1 img{width:30px;height:30px}.sub{color:var(--dim);margin:0 0 16px}
   a.back{color:#56b6ff;text-decoration:none;font-size:13px}
+  a.wiki{color:#56b6ff;text-decoration:none;white-space:nowrap}
   .controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
   input.search{flex:1;min-width:160px;background:var(--card);border:1px solid var(--line);color:var(--txt);
     border-radius:9px;padding:8px 12px;font-size:14px}
@@ -107,6 +108,12 @@ const $=s=>document.querySelector(s);
 const TIERN={'-1':'Debug',0:'Pure',1:'Minor',2:'Major',3:'Doom'};
 const SRANK={live:0,wip:1,planned:2,suggested:3};
 let DATA=[], tier='all', kind='all', status='all', q='', sortK='status', asc=true;
+// The ships wiki (built by X4_Wiki into docs/wiki/): next to this page on GitHub Pages; the
+// companion does not serve it, so the live page links the published copy.
+const PAGES='https://javakhanstudio.github.io/X4_TwitchMod/';
+let WIKI='../wiki/';
+const WIKI_ROWS={ship:'See every ship, with its picture and price',adopt:'See every hull and what adopting it costs'};
+function wiki(r){return WIKI_ROWS[r.buy_key]?` <a class="wiki" href="${WIKI}index.html">${WIKI_ROWS[r.buy_key]} &rarr;</a>`:''}
 function esc(t){return (t??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 // `!buy x` in a description -> <code>; runs on already-escaped text
 function code(h){return h.replace(/`([^`]+)`/g,'<code>$1</code>')}
@@ -130,7 +137,7 @@ function render(){
     <td class="tier"><span class="b t${r.tier}">${TIERN[r.tier]}</span></td>
     <td class="karma k-${esc(r.karma)}">${esc(r.karma)}</td>
     <td class="cd">${r.cooldown?Math.round(r.cooldown)+'s':'—'}</td>
-    <td class="desc">${code(esc(r.description))}</td></tr>`).join('');
+    <td class="desc">${code(esc(r.description))}${wiki(r)}</td></tr>`).join('');
   $('#empty').style.display=rows.length?'none':'';
   const c={};DATA.forEach(r=>c[r.status]=(c[r.status]||0)+1);
   $('#counts').textContent=['live','wip','planned','suggested'].map(s=>(c[s]||0)+' '+s).join(' · ');
@@ -138,7 +145,7 @@ function render(){
 async function load(){
   try{ // live companion first (when this page is served at /catalog)
     const r=await fetch('/api/catalog?all=1',{cache:'no-store'}); if(!r.ok)throw 0;
-    DATA=await r.json(); $('#back').style.display='';
+    DATA=await r.json(); $('#back').style.display=''; WIKI=PAGES+'wiki/';
     $('#src').textContent='live from the companion · single source: bridge/twitch_bridge/catalog.py';
   }catch(e){ // static export next to this file (GitHub Pages)
     try{
