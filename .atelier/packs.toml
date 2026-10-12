@@ -91,10 +91,13 @@ event.param only signal_cue sends, $Build not bumped since HEAD), then the md.xs
 0.2 s while a `--serve` instance is up).
 The MD file name must stay lowercase (DEVLOG, live bug 5). content.xml depends on
 ws_2042901274 (SirNukes Mod Support APIs), not on a folder name.
-X4 is a Windows game on this machine (<X4> on drive E, reachable under WSL at /mnt/e/…). An agent
-cannot run it: it needs Simon's GPU, screen and a loaded save. MD/Lua changes take effect on
-loading a save, after `deploy.ps1` copies them in. Never deploy, launch X4 or touch the save
-folder unless the ticket asks; say what Simon must load and what chat should show.
+X4 is a Windows game on this machine (<X4> on drive E, reachable under WSL at /mnt/e/…). It
+needs Simon's GPU and screen. MD/Lua changes take effect on loading a save, after `deploy.ps1`
+copies them in. An agent launches X4 ONLY through `py.exe bridge/tools/x4_run.py run`. It
+refuses unless Simon has marked himself away with tools/x4-away.cmd (r24); `x4_run.py status`
+says GO or why not. The harness always kills X4 at the end. Never launch X4 any other way,
+and never touch the save folder unless the ticket asks. When the gate says NO, say what Simon
+must load and what chat should show.
 """
 
 [tags.world]
