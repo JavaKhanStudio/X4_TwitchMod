@@ -65,6 +65,9 @@ ships.json and sectors.json are GENERATED from the X4 install (gen_ships.py, gen
 the `world` pack): never edit them by hand. gen_ships reads loose-file extensions too
 (x4cat.game_files), so an X4 Ship Forge ship installed in extensions/ gets a row. Prices: adopt = credits/1200, buy = /300, resurrect =
 adopt x 1.5 (fleet.py, docs/10).
+The published ships wiki (docs/wiki, GitHub Pages) is a committed build of ../X4_Wiki and shows
+these prices: after a divisor retune, ADOPT_SIZE_PRICE or a new ships.json, rebuild it with
+`py -3 ../X4_Wiki/tools/build_wiki.py --out docs/wiki` and commit it; test_catalog fails until then.
 Adoptions are the bridge's truth (adoptions.json); MD is stateless about them (docs/10 §2).
 Ship NAMES never cross the wire, only engine tokens (idcode, macro): docs/10 §3.
 Tests: test_catalog, test_commands, test_economy, test_wallet, test_fleet, test_ships,
