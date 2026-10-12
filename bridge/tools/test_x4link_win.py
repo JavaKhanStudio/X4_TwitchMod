@@ -7,12 +7,11 @@ Run:  py bridge/tools/test_x4link_win.py
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from twitch_bridge import protocol  # noqa: E402
-from twitch_bridge.x4link import X4Link  # noqa: E402
+from pipe_client import open_pipe
+from twitch_bridge import protocol
+from twitch_bridge.x4link import X4Link
 
 PIPE = r"\\.\pipe\twitch_selftest"
 
@@ -30,11 +29,7 @@ async def main() -> int:
     await asyncio.sleep(0.3)
     assert not link.connected, "should not be connected before a client attaches"
 
-    loop = asyncio.get_running_loop()
-    reader = asyncio.StreamReader(loop=loop)
-    trans, proto = await loop.create_pipe_connection(
-        lambda: asyncio.StreamReaderProtocol(reader, loop=loop), PIPE)
-    writer = asyncio.StreamWriter(trans, proto, reader, loop)
+    reader, writer = await open_pipe(PIPE)
 
     # The bridge greets with HELLO on connect; wait for connected + that line.
     hello = await asyncio.wait_for(reader.readline(), timeout=2.0)
@@ -69,10 +64,7 @@ async def main() -> int:
     assert not link.connected, "should disconnect when X4 leaves"
 
     # A reconnect should work (server keeps hosting).
-    reader2 = asyncio.StreamReader(loop=loop)
-    trans2, proto2 = await loop.create_pipe_connection(
-        lambda: asyncio.StreamReaderProtocol(reader2, loop=loop), PIPE)
-    writer2 = asyncio.StreamWriter(trans2, proto2, reader2, loop)
+    reader2, writer2 = await open_pipe(PIPE)
     hello2 = await asyncio.wait_for(reader2.readline(), timeout=2.0)
     assert protocol.decode(hello2)["t"] == protocol.HELLO
     writer2.close()

@@ -13,8 +13,8 @@ import asyncio
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from twitch_bridge import protocol  # noqa: E402
+from pipe_client import open_pipe
+from twitch_bridge import protocol
 
 PIPE = r"\\.\pipe\twitch_e2e"
 BRIDGE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,20 +29,15 @@ async def main() -> int:
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT)
 
-    loop = asyncio.get_running_loop()
-
     # Wait for the bridge to start hosting the pipe, then connect as X4 would.
     reader = writer = None
     for _ in range(50):
         await asyncio.sleep(0.1)
         try:
-            reader = asyncio.StreamReader(loop=loop)
-            trans, proto = await loop.create_pipe_connection(
-                lambda: asyncio.StreamReaderProtocol(reader, loop=loop), PIPE)
-            writer = asyncio.StreamWriter(trans, proto, reader, loop)
+            reader, writer = await open_pipe(PIPE)
             break
         except OSError:
-            reader = writer = None
+            pass
     assert writer is not None, "bridge never started hosting the pipe"
     print("[e2e] connected to bridge pipe")
 

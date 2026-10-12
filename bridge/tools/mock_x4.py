@@ -1,11 +1,16 @@
-"""Mock X4: stands in for the game so we can test the bridge end-to-end.
+r"""Mock X4: stands in for the game so we can test the bridge end-to-end.
 
-X4 (via the bekopharm LuaSocket fork) HOSTS a Unix-domain socket; this script
-does the same. It accepts the bridge as a client, prints every message it
-receives (Twitch events), and lets you type lines back (X4 -> bridge actions).
+The transport follows the game's, per OS:
+  --socket PATH  (Linux) X4, via the bekopharm LuaSocket fork, HOSTS a Unix-domain
+                 socket; this script does the same and accepts the bridge.
+  --pipe NAME    (Windows) the BRIDGE hosts \\.\pipe\twitch and X4 connects in as
+                 a client (SirNukes winpipe, CreateFile); this script connects.
+Either way it prints every message it receives from the bridge and lets you type
+lines back (X4 -> bridge actions).
 
 Usage:
     python tools/mock_x4.py --socket /tmp/x4_twitch.sock
+    py tools/mock_x4.py --pipe \\.\pipe\twitch      # the default on Windows
 Then in another terminal:
     python -m twitch_bridge --socket /tmp/x4_twitch.sock
 
@@ -23,31 +28,33 @@ import json
 import os
 import sys
 
-# Allow running from the bridge/ dir without installing the package.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from twitch_bridge import protocol  # noqa: E402
+from pipe_client import open_pipe
+from twitch_bridge import protocol
+
+
+async def _read_bridge(reader: asyncio.StreamReader) -> None:
+    while True:
+        line = await reader.readline()
+        if not line:
+            break
+        try:
+            msg = protocol.decode(line)
+            print(f"[mock_x4 <- bridge] {json.dumps(msg)}", flush=True)
+        except ValueError:
+            print(f"[mock_x4 <- bridge] (raw) {line!r}", flush=True)
 
 
 async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                          state: dict) -> None:
-    peer = "bridge"
-    print(f"\n[mock_x4] {peer} connected", flush=True)
+    print("\n[mock_x4] bridge connected", flush=True)
     state["writer"] = writer
     # Greet like X4 would once it's ready.
     writer.write(protocol.encode(protocol.ready()))
     await writer.drain()
     try:
-        while True:
-            line = await reader.readline()
-            if not line:
-                break
-            try:
-                msg = protocol.decode(line)
-                print(f"[mock_x4 <- bridge] {json.dumps(msg)}", flush=True)
-            except ValueError:
-                print(f"[mock_x4 <- bridge] (raw) {line!r}", flush=True)
+        await _read_bridge(reader)
     finally:
-        print(f"[mock_x4] {peer} disconnected", flush=True)
+        print("[mock_x4] bridge disconnected", flush=True)
         state["writer"] = None
         writer.close()
 
@@ -82,21 +89,40 @@ async def _console(state: dict) -> None:
         await writer.drain()
 
 
-async def main() -> None:
-    p = argparse.ArgumentParser()
-    p.add_argument("--socket", default="/tmp/x4_twitch.sock")
-    args = p.parse_args()
+async def _host_socket(path: str, state: dict) -> None:
+    if os.path.exists(path):
+        os.unlink(path)
+    server = await asyncio.start_unix_server(
+        lambda r, w: _handle_client(r, w, state), path=path)
+    print(f"[mock_x4] listening on {path}", flush=True)
+    async with server:
+        await server.serve_forever()
 
-    if os.path.exists(args.socket):
-        os.unlink(args.socket)
+
+async def _join_pipe(path: str, state: dict) -> None:
+    reader, state["writer"] = await open_pipe(path)
+    print(f"[mock_x4] connected to bridge at {path}", flush=True)
+    await _read_bridge(reader)
+    print("\n[mock_x4] bridge closed the pipe", flush=True)
+
+
+async def main() -> None:
+    p = argparse.ArgumentParser(description="Stand in for X4 on the bridge's transport.")
+    via = p.add_mutually_exclusive_group()
+    via.add_argument("--socket", help="host this Unix socket, as X4 does on Linux "
+                     "(default /tmp/x4_twitch.sock off Windows)")
+    via.add_argument("--pipe", help=r"connect to this named pipe, as X4 does on Windows "
+                     r"(default \\.\pipe\twitch on Windows)")
+    args = p.parse_args()
+    if args.socket is None and args.pipe is None:
+        if sys.platform == "win32":
+            args.pipe = r"\\.\pipe\twitch"
+        else:
+            args.socket = "/tmp/x4_twitch.sock"
 
     state: dict = {"writer": None}
-    server = await asyncio.start_unix_server(
-        lambda r, w: _handle_client(r, w, state), path=args.socket)
-    print(f"[mock_x4] listening on {args.socket}", flush=True)
-
-    async with server:
-        await asyncio.gather(server.serve_forever(), _console(state))
+    link = _join_pipe(args.pipe, state) if args.pipe else _host_socket(args.socket, state)
+    await asyncio.gather(link, _console(state))
 
 
 if __name__ == "__main__":
@@ -104,3 +130,5 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+    except OSError as e:
+        print(f"[mock_x4] could not connect ({e}); is the bridge running?", file=sys.stderr)
