@@ -77,8 +77,8 @@ none of them errors at load. The ones that bite most often:
 - `$x?` means DEFINED, not non-null; compare `== null`.
 - Only strings cross Lua -> MD, and MD cannot split a string or parse a number: one value per
   payload, or put the second in the screen/control slot (SKILL.md, "Getting TWO values").
-- signal_cue takes neither param nor delay. Twitch_RankWatch still re-arms with
-  `signal_cue ... param="$metrics"`, which is silently dropped.
+- signal_cue takes neither param nor delay: a self-signalling loop parks its state on a cue
+  variable instead (Twitch_RankWatch keeps its snapshot in `static.$prev`).
 - A cue under an instantiate="true" cue MUST have an event condition, or X4 drops it at load.
   md.xsd does not catch this; `python3 bridge/tools/test_md_sync.py` does.
 - `--` inside an XML comment makes the whole file unparseable: draw rules with `=`.

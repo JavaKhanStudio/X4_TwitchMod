@@ -223,8 +223,10 @@
          Twitch_RankWatchStart (re)seeds on every Named_Pipes.Reloaded (new game /
          save load / ui reload) and CANCELS the running loop first (cancel_cue also
          cancels the instance waiting in <delay>), so a reload can never stack a
-         second poller. The first tick after (re)seed has no prior snapshot (null
-         param) and only establishes the baseline — so it never fires a false
+         second poller. The snapshot lives on the STATIC cue (Twitch_RankWatch.$prev):
+         signal_cue takes no param, so the loop cannot carry it in the signal.
+         Start clears it to null; the first tick after (re)seed then sees no prior
+         snapshot and only establishes the baseline — so it never fires a false
          level-up from a stale value; the trade-off is that a rank-up within the
          first ~20s after a load isn't announced. -->
     <cue name="Twitch_RankWatchStart" instantiate="true">
@@ -233,7 +235,8 @@
       </conditions>
       <actions>
         <cancel_cue cue="Twitch_RankWatch"/>
-        <signal_cue cue="Twitch_RankWatch"/>   <!-- no param => baseline seed tick -->
+        <set_value name="Twitch_RankWatch.$prev" exact="null"/>   <!-- null => baseline seed tick -->
+        <signal_cue cue="Twitch_RankWatch"/>
       </actions>
     </cue>
 
@@ -254,8 +257,8 @@
         <append_to_list name="$metrics" exact="table[$label='Trade', $page=20219, $base=1001, $max=30, $cur=$vTrade]"/>
 
         <!-- ===== generic compare + announce (metric-agnostic) ================ -->
-        <do_if value="@event.param?">   <!-- prior snapshot exists: compare rows by index -->
-          <set_value name="$prev" exact="event.param"/>
+        <do_if value="@static.$prev != null">   <!-- prior snapshot exists: compare rows by index -->
+          <set_value name="$prev" exact="static.$prev"/>
           <set_value name="$i" exact="1"/>
           <do_while value="$i le $metrics.count">
             <set_value name="$m" exact="$metrics.{$i}"/>
@@ -273,8 +276,9 @@
         </do_if>
         <!-- else: seed tick — silently establish the baseline -->
 
-        <!-- re-arm the loop, carrying this snapshot forward as the new baseline -->
-        <signal_cue cue="Twitch_RankWatch" param="$metrics"/>
+        <!-- park this snapshot as the next tick's baseline, then re-arm -->
+        <set_value name="static.$prev" exact="$metrics"/>
+        <signal_cue cue="Twitch_RankWatch"/>
       </actions>
     </cue>
 
