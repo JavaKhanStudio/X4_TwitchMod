@@ -96,7 +96,8 @@ Checks: `python3 -c "import xml.etree.ElementTree as E; E.parse('extensions/twit
 then test_md_sync.py, then `python3 bridge/tools/test_md_lint.py` (signal_cue param/delay, an
 event.param only signal_cue sends, $Build not bumped since HEAD), then the md.xsd validation:
 `py.exe bridge/tools/validate_md.py` (Windows py has lxml; ~2 min to compile the schema, or
-0.2 s while a `--serve` instance is up).
+0.2 s while a `--serve` instance is up). Both are shims since x4 r3: the code is
+../X4_Mods/tools/test_md_lint.py and validate_md.py, shared by every X4 board; fix it THERE.
 The MD file name must stay lowercase (DEVLOG, live bug 5). content.xml depends on
 ws_2042901274 (SirNukes Mod Support APIs), not on a folder name.
 X4 is a Windows game on this machine (<X4> on drive E, reachable under WSL at /mnt/e/…). It

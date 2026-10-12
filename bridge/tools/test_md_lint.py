@@ -1,193 +1,27 @@
 #!/usr/bin/env python3
-"""MD lint: the x4-modding SKILL.md traps that neither md.xsd nor test_md_sync.py
-catches cheaply. Each one loads fine in X4 and fails silently in game.
+"""The old path of test_md_lint.py, kept working: the lint itself moved to
+../X4_Mods/tools/test_md_lint.py (board x4 r3), which every X4 board shares.
 
-  1. <signal_cue> with a param or delay attribute: both are silently dropped
-     (only signal_cue_instantly takes param; a delay lives on the target cue).
-  2. A cue that reads event.param but is only ever reached by <signal_cue>:
-     event.param is always null there (Twitch_RankWatch, fixed in r3/1c435ad).
-  3. An MD file that differs from HEAD while Twitch_Say's $Build still equals
-     HEAD's: an edit without a build bump, so chat cannot tell a stale script
-     from a broken fix (#mod pack). Compared against HEAD, so a second edit
-     before the commit is not caught.
-
-`--self-test` plants each trap in a copy built in memory and checks the lint
-fails on it.
-
-With no path it lints this repo's extensions/*/md/*.xml. Given file or directory
-paths (a directory means every *.xml in an md/ folder under it), it lints those
-instead, so another extension can check its own MD:
-
-  python3 bridge/tools/test_md_lint.py ../X4_Questline/extensions/*/md/*.xml
-
-Trap 3 is about twitch_integration.xml, so it is skipped when that file is not
-among the paths.
+This shim loads it with this repo as REPO (no path: this repo's extensions/*/md/*.xml)
+and twitch_integration.xml as BUILD_FILE (Twitch_Say's $Build: it must be among the
+default files, and --self-test plants into it), so `python3
+bridge/tools/test_md_lint.py [--self-test] [paths]` does what it always did.
 """
-import re
-import subprocess
+import importlib.util
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-BUILD_FILE = REPO / "extensions" / "twitch_integration" / "md" / "twitch_integration.xml"
-BUILD_RE = re.compile(r"<set_value name=\"\$Build\" exact=\"'([^']*)'\"/>")
+CORE = REPO.parent / "X4_Mods" / "tools" / "test_md_lint.py"
+if not CORE.is_file():
+    sys.exit(f"test_md_lint.py moved to {CORE}, which is not there: clone X4_Mods next to "
+             "this checkout")
+spec = importlib.util.spec_from_file_location("test_md_lint", CORE)
+core = importlib.util.module_from_spec(spec)
+sys.modules["test_md_lint"] = core
+spec.loader.exec_module(core)
+core.REPO = REPO
+core.BUILD_FILE = REPO / "extensions" / "twitch_integration" / "md" / "twitch_integration.xml"
 
-
-def short(ref: str) -> str:
-    """'md.Twitch_Integration.Twitch_Say' and 'Twitch_Say' name the same cue."""
-    return ref.rsplit(".", 1)[-1]
-
-
-def own_elements(cue):
-    """The cue's own conditions/delay/actions, not those of its sub-cues."""
-    for child in cue:
-        if child.tag != "cues":
-            yield from child.iter()
-
-
-def signal_param_or_delay(roots: dict[str, ET.Element]) -> list[str]:
-    bad = []
-    for name, root in roots.items():
-        for e in root.iter("signal_cue"):
-            for attr in ("param", "delay"):
-                if attr in e.attrib:
-                    bad.append(f"{name}: signal_cue cue={e.get('cue')!r} {attr}={e.get(attr)!r}")
-    return bad
-
-
-def param_never_sent(roots: dict[str, ET.Element]) -> list[str]:
-    plain: dict[str, int] = {}
-    instant: dict[str, int] = {}
-    for root in roots.values():
-        for tag, into in (("signal_cue", plain), ("signal_cue_instantly", instant)):
-            for e in root.iter(tag):
-                c = short(e.get("cue") or "")
-                into[c] = into.get(c, 0) + 1
-    bad = []
-    for name, root in roots.items():
-        for cue in root.iter("cue"):
-            cname = cue.get("name")
-            conds = cue.find("conditions")
-            # Only a cue woken by a direct signal (<event_cue_signalled/>, no cue=)
-            # gets its event.param from whoever signals it by name.
-            direct = conds is not None and any(
-                e.tag == "event_cue_signalled" and "cue" not in e.attrib for e in conds.iter())
-            if not direct:
-                continue
-            reads = any("event.param" in v for e in own_elements(cue) for v in e.attrib.values())
-            if reads and plain.get(cname) and not instant.get(cname):
-                bad.append(f"{name}: {cname} reads event.param but is only reached by "
-                           f"signal_cue ({plain[cname]}x), which carries no param")
-    return bad
-
-
-def head_text(path: Path) -> str | None:
-    rel = path.relative_to(REPO).as_posix()
-    p = subprocess.run(["git", "-C", str(REPO), "show", f"HEAD:{rel}"],
-                       capture_output=True, text=True, encoding="utf-8", check=False)
-    return p.stdout if p.returncode == 0 else None
-
-
-def norm(s: str) -> str:
-    return s.replace("\r\n", "\n")
-
-
-def build_not_bumped(text: str, head: str | None) -> str | None:
-    if head is None or norm(text) == norm(head):
-        return None
-    now, then = BUILD_RE.search(text), BUILD_RE.search(head)
-    if now is None:
-        return "no $Build in Twitch_Say"
-    if then is not None and now.group(1) == then.group(1):
-        return f"MD differs from HEAD but $Build is still {now.group(1)!r}"
-    return None
-
-
-ok = True
-
-
-def check(c, m):
-    global ok
-    print(("PASS: " if c else "FAIL: ") + m)
-    ok = ok and c
-
-
-def md_files(args: list[str]) -> list[Path]:
-    """The paths given (a directory: the *.xml in md/ folders under it), else the repo's."""
-    if not args:
-        return sorted(REPO.glob("extensions/*/md/*.xml"))
-    out = []
-    for a in args:
-        p = Path(a).resolve()
-        if p.is_dir():
-            out += sorted(f for f in p.rglob("*.xml") if f.parent.name == "md")
-        elif p.is_file():
-            out.append(p)
-        else:
-            sys.exit(f"no such file or directory: {a}")
-    return out
-
-
-def display(p: Path) -> str:
-    return p.relative_to(REPO).as_posix() if p.is_relative_to(REPO) else str(p)
-
-
-def lint(texts: dict[str, str], build_text: str | None, build_head: str | None, label: str = ""):
-    roots = {n: ET.fromstring(t.encode("utf-8")) for n, t in texts.items()}
-    bad = signal_param_or_delay(roots)
-    check(not bad, f"{label}no signal_cue carries param or delay" + (f" {bad}" if bad else ""))
-    bad = param_never_sent(roots)
-    check(not bad, f"{label}no cue reads an event.param that only signal_cue sends"
-          + (f" {bad}" if bad else ""))
-    if build_text is None:
-        print(f"{label}skip: $Build bump (no {BUILD_FILE.name} among the paths)")
-        return
-    bad = build_not_bumped(build_text, build_head)
-    check(bad is None, f"{label}$Build bumped since HEAD" + (f" ({bad})" if bad else ""))
-
-
-def self_test(texts: dict[str, str], build_text: str):
-    """Each planted trap must make the lint fail; the clean copy must pass."""
-    global ok
-    key = display(BUILD_FILE)
-    poll = ('<cue name="Lint_Poll" instantiate="true"><conditions><event_cue_signalled/>'
-            '</conditions><actions><set_value name="$p" exact="event.param"/>'
-            '<signal_cue cue="Lint_Poll"/></actions></cue>')
-    planted = {
-        "signal_cue param": build_text.replace(
-            "</cues>", '<cue name="Lint_A"><actions><signal_cue cue="Twitch_Say" param="1"/>'
-                       "</actions></cue></cues>", 1),
-        "event.param via signal_cue": build_text.replace("</cues>", poll + "</cues>", 1),
-    }
-    for what, text in planted.items():
-        saved, ok = ok, True
-        print(f"-- self-test, planted: {what}")
-        lint({**texts, key: text}, text, None, "  ")
-        caught = not ok
-        ok = saved
-        check(caught, f"self-test: the lint catches a planted {what}")
-    # an edit with the old $Build, and the same edit with a new one
-    edited = build_text.replace("</cues>", "<!-- lint self-test edit --></cues>", 1)
-    check(build_not_bumped(edited, build_text) is not None,
-          "self-test: an edit without a $Build bump is caught")
-    bumped = BUILD_RE.sub(lambda m: m.group(0).replace(m.group(1), m.group(1) + "-x"), edited, 1)
-    check(build_not_bumped(bumped, build_text) is None,
-          "self-test: the same edit with a bumped $Build passes")
-
-
-paths = [a for a in sys.argv[1:] if not a.startswith("--")]
-texts = {display(p): p.read_text(encoding="utf-8") for p in md_files(paths)}
-build_key = display(BUILD_FILE)
-if paths:
-    check(bool(texts), f"found {len(texts)} MD files in the paths given")
-else:
-    check(build_key in texts, f"found {len(texts)} MD files, including {BUILD_FILE.name}")
-build_text = texts.get(build_key)
-lint(texts, build_text, head_text(BUILD_FILE) if build_text is not None else None)
-if "--self-test" in sys.argv:
-    # the planted traps go into this repo's twitch_integration.xml, read even when not linted
-    self_test(texts, build_text or BUILD_FILE.read_text(encoding="utf-8"))
-
-print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
-sys.exit(0 if ok else 1)
+if __name__ == "__main__":
+    sys.exit(core.main())
