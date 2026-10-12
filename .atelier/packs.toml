@@ -21,7 +21,8 @@ The companion is the only thing that talks to Twitch: X4's sandbox has no networ
 FFI `system` (docs/DEVLOG.md, "In-game process spawn via FFI — BLOCKED"). protocol.py is THE
 contract: one compact JSON object a line. A new `t` type needs a constant there AND its
 handler on the receiving side: a cue in extensions/twitch_integration/md/twitch_integration.xml
-for bridge -> X4, a branch in app.py (as FLEET, CMDFAIL) for X4 -> bridge.
+for bridge -> X4, an entry in Companion.x4_handlers in app.py (as FLEET, CMDFAIL) for X4 ->
+bridge; a type with no entry goes to the source's handle_action (tools/test_app_routing.py).
 Transport is per OS (x4link/): on Linux X4 HOSTS `<SAVE>/twitch.xml` and the bridge connects;
 on Windows the bridge HOSTS `\\\\.\\pipe\\twitch` and X4 connects. PIPE_NAME in config.py must
 match the MD pipe name "twitch".
