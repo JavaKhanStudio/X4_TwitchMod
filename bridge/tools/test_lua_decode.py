@@ -33,7 +33,8 @@ lua.execute("""
   end
   function DebugError(s) end
 """)
-Lib = lua.execute(open(LUA).read())
+with open(LUA) as f:
+    Lib = lua.execute(f.read())
 decode = Lib["json_decode"]
 
 cases = [

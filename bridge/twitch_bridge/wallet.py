@@ -16,7 +16,7 @@ import math
 import os
 import tempfile
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 
@@ -181,7 +181,7 @@ class Wallet:
         elif v.mod:
             base += self.s.mod_bonus
             mult *= self.s.mod_mult
-        return int(math.ceil(base * mult * self._activity_mult(v)))
+        return math.ceil(base * mult * self._activity_mult(v))
 
     def award(self) -> int:
         """Award coins to every active, non-banned viewer. Returns total handed out."""

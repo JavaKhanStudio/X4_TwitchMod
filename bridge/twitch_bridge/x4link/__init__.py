@@ -20,7 +20,7 @@ import sys
 
 from .base import BaseX4Link, OnMessage
 
-__all__ = ["BaseX4Link", "OnMessage", "make_x4_link", "X4Link", "default_transport"]
+__all__ = ["BaseX4Link", "OnMessage", "X4Link", "default_transport", "make_x4_link"]
 
 
 def default_transport() -> str:

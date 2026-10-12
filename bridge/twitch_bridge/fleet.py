@@ -155,6 +155,14 @@ class FleetShip:
         return ADOPT_SIZE_PRICE.get(self.size.upper(), ADOPT_UNKNOWN_PRICE)
 
 
+def _pct(parts: list[str], i: int) -> int:
+    """Roster column `i` as a 0-100 percentage, -1 if absent or unreadable."""
+    try:
+        return max(0, min(100, round(float(parts[i]))))
+    except (IndexError, TypeError, ValueError):
+        return -1
+
+
 def _label_from_macro(macro: str) -> str:
     """Best-effort display name for a hull ships.json doesn't know.
 
@@ -202,13 +210,8 @@ class Fleet:
                 continue
             # Columns 4-6 are newer than the first roster format; a mod build that
             # predates them simply sends three fields and the status stays unknown.
-            def _pct(i: int) -> int:
-                try:
-                    return max(0, min(100, round(float(parts[i]))))
-                except (IndexError, TypeError, ValueError):
-                    return -1
             ships[idcode] = FleetShip(idcode, macro, size or "?",
-                                      hull=_pct(3), shield=_pct(4),
+                                      hull=_pct(parts, 3), shield=_pct(parts, 4),
                                       sector_macro=parts[5].strip() if len(parts) > 5 else "")
         self.ships = ships
         self.total = int(msg.get("total") or len(ships))

@@ -27,4 +27,4 @@ class Source:
 
     async def aclose(self) -> None:
         """Optional cleanup."""
-        return None
+        return

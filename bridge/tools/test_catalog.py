@@ -13,7 +13,6 @@ from twitch_bridge.catalog import (  # noqa: E402
     STARTER,
     STATUS,
     TIERS,
-    StoreEvent,
     catalog_view,
 )
 

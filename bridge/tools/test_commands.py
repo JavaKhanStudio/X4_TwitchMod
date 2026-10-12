@@ -203,7 +203,10 @@ check(BOSO_RANDOM not in BOSO_MOODS, "'random' is kept out of BOSO_MOODS")
 check(f"$mood == '{BOSO_RANDOM}'" in md and "md.Twitch_BosoLines.RandomLine" in md,
       "MD routes the random word to the generated line pool")
 pool_path = os.path.join(os.path.dirname(md_path), "twitch_boso_lines.xml")
-pool = open(pool_path, encoding="utf-8").read() if os.path.exists(pool_path) else ""
+pool = ""
+if os.path.exists(pool_path):
+    with open(pool_path, encoding="utf-8") as f:
+        pool = f.read()
 check('<library name="RandomLine"' in pool,
       "twitch_boso_lines.xml provides RandomLine")
 # Every id in the pool must be a plausible page-10201 line, and there must be a lot

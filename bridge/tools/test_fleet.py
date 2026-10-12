@@ -96,10 +96,10 @@ o = econ.handle_chat(chat("bo", "!buy adopt abc-123"))
 check(kinds(o) == ["cmd", "say"], "ID code matching is case-insensitive")
 
 # ---- !fleet size filter ---------------------------------------------------
-mix = ";".join([f"SSS-001|ship_zzz_s_hull_01_a_macro|S",
-                f"SSS-002|ship_zzz_s_hull_01_a_macro|S",
-                f"MMM-001|ship_zzz_m_hull_01_a_macro|M",
-                f"XXX-001|ship_zzz_xl_hull_01_a_macro|XL"])
+mix = ";".join(["SSS-001|ship_zzz_s_hull_01_a_macro|S",
+                "SSS-002|ship_zzz_s_hull_01_a_macro|S",
+                "MMM-001|ship_zzz_m_hull_01_a_macro|M",
+                "XXX-001|ship_zzz_xl_hull_01_a_macro|XL"])
 fl.update(protocol.fleet(mix, total=4, sent=4))
 
 o = econ.handle_chat(chat("ana", "!fleet XL"))
@@ -216,7 +216,7 @@ econ.handle_chat(chat("eve", "!abandon ONE-002"))
 events = [h["event"] for h in fl.history if h["user"] == "eve"]
 check(events == ["adopted", "destroyed", "abandoned", "adopted", "abandoned"],
       f"every lifecycle step is recorded in order — {events}")
-rec = [h for h in fl.history if h["user"] == "eve" and h["event"] == "destroyed"][0]
+rec = next(h for h in fl.history if h["user"] == "eve" and h["event"] == "destroyed")
 check(rec["killer"] == "Xenon" and rec["label"] == known.label,
       "the record keeps the ship TYPE and the killer, not just an id code")
 check(all(h.get("at") for h in fl.history), "every entry is timestamped")
