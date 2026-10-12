@@ -13,6 +13,15 @@ catches cheaply. Each one loads fine in X4 and fails silently in game.
 
 `--self-test` plants each trap in a copy built in memory and checks the lint
 fails on it.
+
+With no path it lints this repo's extensions/*/md/*.xml. Given file or directory
+paths (a directory means every *.xml in an md/ folder under it), it lints those
+instead, so another extension can check its own MD:
+
+  python3 bridge/tools/test_md_lint.py ../X4_Questline/extensions/*/md/*.xml
+
+Trap 3 is about twitch_integration.xml, so it is skipped when that file is not
+among the paths.
 """
 import re
 import subprocess
@@ -21,7 +30,6 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-MD_FILES = sorted(REPO.glob("extensions/*/md/*.xml"))
 BUILD_FILE = REPO / "extensions" / "twitch_integration" / "md" / "twitch_integration.xml"
 BUILD_RE = re.compile(r"<set_value name=\"\$Build\" exact=\"'([^']*)'\"/>")
 
@@ -105,13 +113,36 @@ def check(c, m):
     ok = ok and c
 
 
-def lint(texts: dict[str, str], build_text: str, build_head: str | None, label: str = ""):
+def md_files(args: list[str]) -> list[Path]:
+    """The paths given (a directory: the *.xml in md/ folders under it), else the repo's."""
+    if not args:
+        return sorted(REPO.glob("extensions/*/md/*.xml"))
+    out = []
+    for a in args:
+        p = Path(a).resolve()
+        if p.is_dir():
+            out += sorted(f for f in p.rglob("*.xml") if f.parent.name == "md")
+        elif p.is_file():
+            out.append(p)
+        else:
+            sys.exit(f"no such file or directory: {a}")
+    return out
+
+
+def display(p: Path) -> str:
+    return p.relative_to(REPO).as_posix() if p.is_relative_to(REPO) else str(p)
+
+
+def lint(texts: dict[str, str], build_text: str | None, build_head: str | None, label: str = ""):
     roots = {n: ET.fromstring(t.encode("utf-8")) for n, t in texts.items()}
     bad = signal_param_or_delay(roots)
     check(not bad, f"{label}no signal_cue carries param or delay" + (f" {bad}" if bad else ""))
     bad = param_never_sent(roots)
     check(not bad, f"{label}no cue reads an event.param that only signal_cue sends"
           + (f" {bad}" if bad else ""))
+    if build_text is None:
+        print(f"{label}skip: $Build bump (no {BUILD_FILE.name} among the paths)")
+        return
     bad = build_not_bumped(build_text, build_head)
     check(bad is None, f"{label}$Build bumped since HEAD" + (f" ({bad})" if bad else ""))
 
@@ -119,7 +150,7 @@ def lint(texts: dict[str, str], build_text: str, build_head: str | None, label: 
 def self_test(texts: dict[str, str], build_text: str):
     """Each planted trap must make the lint fail; the clean copy must pass."""
     global ok
-    key = BUILD_FILE.name
+    key = display(BUILD_FILE)
     poll = ('<cue name="Lint_Poll" instantiate="true"><conditions><event_cue_signalled/>'
             '</conditions><actions><set_value name="$p" exact="event.param"/>'
             '<signal_cue cue="Lint_Poll"/></actions></cue>')
@@ -145,12 +176,18 @@ def self_test(texts: dict[str, str], build_text: str):
           "self-test: the same edit with a bumped $Build passes")
 
 
-texts = {p.name: p.read_text(encoding="utf-8") for p in MD_FILES}
-check(BUILD_FILE.name in texts, f"found {len(texts)} MD files, including {BUILD_FILE.name}")
-build_text = texts[BUILD_FILE.name]
-lint(texts, build_text, head_text(BUILD_FILE))
+paths = [a for a in sys.argv[1:] if not a.startswith("--")]
+texts = {display(p): p.read_text(encoding="utf-8") for p in md_files(paths)}
+build_key = display(BUILD_FILE)
+if paths:
+    check(bool(texts), f"found {len(texts)} MD files in the paths given")
+else:
+    check(build_key in texts, f"found {len(texts)} MD files, including {BUILD_FILE.name}")
+build_text = texts.get(build_key)
+lint(texts, build_text, head_text(BUILD_FILE) if build_text is not None else None)
 if "--self-test" in sys.argv:
-    self_test(texts, build_text)
+    # the planted traps go into this repo's twitch_integration.xml, read even when not linted
+    self_test(texts, build_text or BUILD_FILE.read_text(encoding="utf-8"))
 
 print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
 sys.exit(0 if ok else 1)

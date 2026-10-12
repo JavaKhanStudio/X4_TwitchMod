@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Validate every extensions/*/md/*.xml against the game's own md.xsd.
 
+Given file or directory paths (a directory means every *.xml in an md/ folder
+under it), it validates those instead, so another extension can check its own MD:
+
+  py.exe bridge/tools/validate_md.py ../X4_Questline/extensions/*/md/*.xml
+
+Windows Python reads paths relative to the current directory; a WSL absolute
+path (/mnt/c/...) means nothing to it, so pass relative ones.
+
 Needs lxml, which WSL's python3 does not have: run it with Windows Python,
 `py.exe bridge/tools/validate_md.py` from the repo root under WSL.
 
@@ -80,19 +88,39 @@ def serve() -> None:
                 conn.send({name: validate(schema, name, data) for name, data in req})
 
 
-def files(plant: bool) -> list[tuple[str, bytes]]:
-    out = [(p.relative_to(REPO).as_posix(), p.read_bytes())
-           for p in sorted(REPO.glob("extensions/*/md/*.xml"))]
+def md_paths(args: list[str]) -> list[Path]:
+    """The paths given (a directory: the *.xml in md/ folders under it), else the repo's."""
+    if not args:
+        return sorted(REPO.glob("extensions/*/md/*.xml"))
+    out = []
+    for a in args:
+        p = Path(a).resolve()
+        if p.is_dir():
+            out += sorted(f for f in p.rglob("*.xml") if f.parent.name == "md")
+        elif p.is_file():
+            out.append(p)
+        else:
+            sys.exit(f"no such file or directory: {a}")
+    return out
+
+
+def files(args: list[str], plant: bool) -> list[tuple[str, bytes]]:
+    out = [(p.relative_to(REPO).as_posix() if p.is_relative_to(REPO) else str(p), p.read_bytes())
+           for p in md_paths(args)]
+    if not out:
+        sys.exit("no MD files in the paths given")
     if plant:
-        name, data = next(f for f in out if f[0].endswith("twitch_integration.xml"))
+        # planted into this repo's twitch_integration.xml, whatever the paths
+        plant_file = REPO / "extensions" / "twitch_integration" / "md" / "twitch_integration.xml"
+        name, data = plant_file.relative_to(REPO).as_posix(), plant_file.read_bytes()
         bad = data.replace(b"</cues>", b'<cue name="Plant"><actions>'
                            b'<signal_cue cue="Plant" param="1"/></actions></cue></cues>', 1)
         out.append((name + " (planted signal_cue param)", bad))
     return out
 
 
-def run(plant: bool) -> int:
-    req = files(plant)
+def run(args: list[str], plant: bool) -> int:
+    req = files(args, plant)
     try:
         with Client(ADDRESS, authkey=AUTHKEY) as conn:
             conn.send(req)
@@ -126,4 +154,4 @@ if __name__ == "__main__":
         except OSError:
             print("no server running")
     else:
-        sys.exit(run("--plant" in sys.argv))
+        sys.exit(run([a for a in sys.argv[1:] if not a.startswith("--")], "--plant" in sys.argv))

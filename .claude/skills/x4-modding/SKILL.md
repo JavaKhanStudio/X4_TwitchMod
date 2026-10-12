@@ -49,6 +49,7 @@ schema's own `<xs:include schemaLocation="common.xsd"/>` resolves:
 py.exe bridge/tools/validate_md.py            # every extensions/*/md/*.xml; extracts the xsd on first use
 py.exe bridge/tools/validate_md.py --plant    # + a planted signal_cue param that must FAIL
 py.exe bridge/tools/validate_md.py --serve &  # optional: compile once (~2 min), later runs take 0.2 s
+py.exe bridge/tools/validate_md.py ../X4_Questline/extensions/*/md/*.xml  # another extension's MD (files or dirs; relative paths)
 ```
 Windows `py` has lxml; WSL's python3 does not. Compiling the schema costs ~2 min each
 time (common.xsd's content model; lxml cannot pickle it), hence the optional server.
