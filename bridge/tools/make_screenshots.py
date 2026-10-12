@@ -6,6 +6,7 @@ and no real credentials, so the images contain no personal data.
 
     python tools/make_screenshots.py
 """
+import http.client
 import os
 import subprocess
 import sys
@@ -26,7 +27,7 @@ def wait_up(url, tries=80):
         try:
             urllib.request.urlopen(url, timeout=0.5)
             return True
-        except Exception:
+        except (OSError, http.client.HTTPException):   # not up yet / mid-start
             time.sleep(0.2)
     return False
 
@@ -62,7 +63,7 @@ finally:
     proc.terminate()
     try:
         proc.wait(timeout=3)
-    except Exception:
+    except subprocess.TimeoutExpired:
         proc.kill()
     Path("/tmp/shot_wallet.json").unlink(missing_ok=True)
     Path(SHOT_SETUP).unlink(missing_ok=True)

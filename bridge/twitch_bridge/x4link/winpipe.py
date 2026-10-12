@@ -62,8 +62,8 @@ class WinPipeX4Link(BaseX4Link):
                 self._writer = None
             try:
                 writer.close()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:  # noqa: BLE001 - the pipe is going away anyway
+                log.debug("X4 pipe writer close failed", exc_info=True)
             log.info("X4 disconnected from pipe")
 
     def stop(self) -> None:
@@ -75,6 +75,6 @@ class WinPipeX4Link(BaseX4Link):
             for s in self._servers:
                 try:
                     s.close()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception:  # noqa: BLE001 - close the rest regardless
+                    log.debug("pipe server close failed", exc_info=True)
         self._servers = None

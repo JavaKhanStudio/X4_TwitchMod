@@ -33,6 +33,9 @@ try:
     from twitchAPI.type import AuthScope
     _IMPORT_ERROR: Exception | None = None
 except Exception as e:  # pragma: no cover - exercised only without the dep
+    # Broad on purpose: a broken install (not just a missing one) must leave the
+    # companion running with the Twitch source reporting why, not crash it.
+    log.debug("twitchAPI unavailable", exc_info=True)
     Twitch = UserAuthenticationStorageHelper = EventSubWebsocket = AuthScope = None  # type: ignore
     _IMPORT_ERROR = e
 
@@ -94,7 +97,7 @@ class TwitchSource(Source):
             try:
                 self._status_cb()
             except Exception:  # noqa: BLE001 - status must never break the source
-                pass
+                log.debug("[twitch] status callback failed", exc_info=True)
 
     def state(self) -> dict:
         # client_id is semi-public (prefill convenience); the SECRET is never exposed,
@@ -278,14 +281,14 @@ class TwitchSource(Source):
         if self._eventsub is not None:
             try:
                 await self._eventsub.stop()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:  # noqa: BLE001 - teardown carries on regardless
+                log.debug("[twitch] eventsub stop failed", exc_info=True)
             self._eventsub = None
         if self._twitch is not None:
             try:
                 await self._twitch.close()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:  # noqa: BLE001 - teardown carries on regardless
+                log.debug("[twitch] client close failed", exc_info=True)
             self._twitch = None
 
     async def aclose(self) -> None:

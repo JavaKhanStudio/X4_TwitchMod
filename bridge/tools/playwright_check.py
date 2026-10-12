@@ -5,6 +5,7 @@ not just that curl gets a 200.
 
     python tools/playwright_check.py
 """
+import http.client
 import os
 import subprocess
 import sys
@@ -23,7 +24,7 @@ def wait_up(url, tries=60):
         try:
             urllib.request.urlopen(url, timeout=0.5)
             return True
-        except Exception:
+        except (OSError, http.client.HTTPException):   # not up yet / mid-start
             time.sleep(0.2)
     return False
 
@@ -78,7 +79,7 @@ finally:
     proc.terminate()
     try:
         proc.wait(timeout=3)
-    except Exception:
+    except subprocess.TimeoutExpired:
         proc.kill()
 
 print("\nRESULT:", "PASS ✅" if ok else "FAIL")
