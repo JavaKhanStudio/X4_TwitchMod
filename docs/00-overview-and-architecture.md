@@ -85,22 +85,54 @@ Twitch complexity and speaks a **tiny, dumb line protocol** to X4. X4 stays simp
 
 ## 5. The wire protocol (our design — keep it dumb)
 
-Newline-delimited JSON, one event per line, both directions. Example:
+Newline-delimited JSON, one message per line, both directions. `bridge/twitch_bridge/protocol.py`
+is the authority — every message has a constructor there, and nothing should build one by
+hand (the tests build their fixtures with the same constructors, so a format change breaks
+loudly instead of silently).
 
 ```
-# Bridge → X4
+# Bridge → X4 : Twitch events
 {"t":"chat","user":"viewer42","msg":"!spawn fighter","badges":["sub"]}
 {"t":"redeem","user":"viewer42","reward":"Spawn Pirate","amount":1}
 {"t":"sub","user":"viewer42","tier":"1000","months":3}
 {"t":"raid","user":"bigstreamer","viewers":250}
 
+# Bridge → X4 : a VETTED command (post permissions/cooldowns/coins)
+{"t":"cmd","id":"adopt_ship","by":"viewer42","args":{...},"argv":["PSF-481","viewer42's Nemesis"],"tier":0}
+
 # X4 → Bridge
 {"t":"say","msg":"viewer42 spawned a fighter for the player!"}
+{"t":"cmdfail","id":"adopt_ship","ref":"PSF-481","reason":"that ship is no longer in the fleet"}
+{"t":"fleet","total":42,"sent":42,"data":"PSF-481|ship_par_m_frigate_01_a_macro|M|87|100|Cluster_14_Sector001_macro;…"}
+{"t":"shipdown","idcode":"PSF-481","macro":"…","killer":"Xenon"}
+{"t":"shipnew","old":"PSF-481","idcode":"NEW-014"}
 {"t":"ready"}            # handshake on connect
 ```
 
-Keep parsing trivial on the X4 side — JSON parsing in Lua is doable but a `|`-delimited
-format is even cheaper if we hit performance/robustness issues. Revisit in build.
+### Three rules the protocol learned the hard way
+
+**1. `argv` is the payload; `args` is for humans.** The ui lua decodes `args` into a Lua
+hash table, and `pairs()` order is undefined — `{"ware","qty"}` came back as
+`"50;energycells"`. `argv` is the same values as an ordered ARRAY, and arrays keep their
+order through the decoder. `args` survives for logs and name-based lookups.
+
+**2. Only TOKENS cross the pipe, never display text.** MD builds its JSON by string
+concatenation, so one ship called `foo"bar` would corrupt a whole line. Ship names,
+sector names and ship types are therefore never transmitted: the game sends an id code,
+a macro and a sector macro, and the bridge resolves them to names from `ships.json` /
+`sectors.json`. Faction display names are the one exception — they are game text, not
+player-editable.
+
+**3. X4 acknowledges FAILURE only.** There is no per-command success ack (it would double
+the traffic for nothing), so the bridge holds a charge as refundable until `cmdfail`
+arrives or it ages out. `cmdfail` therefore carries **`ref`** — the specific thing that
+failed. Without it the bridge can only guess "the oldest outstanding charge for this
+action", which is wrong for anything acknowledged only on failure: successes never leave
+the pending list, so the first failure rolls back an EARLIER request that worked.
+
+Keep parsing trivial on the X4 side: MD cannot split a string at all (its `string` type
+has one property, the format operator), so anything MD has to take apart is either
+delimited for the BRIDGE to parse, or split into separate event slots before it arrives.
 
 ## 6. Reading order for the rest of the bank
 

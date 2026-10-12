@@ -9,6 +9,250 @@ Reference docs (`00`–`09`) hold the durable detail; this log is the narrative 
 
 ---
 
+## 2026-08-06 — Boso Ta calls you: the comm popup as an event reaction
+Twitch events now put **Boso Ta on the cockpit monitor** — live-rendered, lip-synced,
+speaking a real vanilla voice line with its own subtitle. `!boso` (subscriber and up)
+walks through the moods one per call; `!boso angry` picks one; `!boso random` draws from
+every recording he has. Raids, subs and cheers each fire a tonally-matched mood.
+
+- **There is no video in X4.** Not one `.ogv`/`.bik`/`.mp4`/`.webm` in any archive — the
+  "video call" is the comm popup, so the task is "make an actor speak", not "play a file".
+  One call does it: `md.LIB_Dialog.Speak_Actor_Run` with the actor and a line id.
+- **Nothing had to be spawned or tracked.** Named characters are globals
+  (`md.$PersistentCharacters.$BosoTa`, set by vanilla `md/setup.xml:324`), and vanilla
+  already tags him with the monitor cutscene at `setup.xml:452`
+  (`$cutscenekey = table[$key='ShowCharacterBoron']`), which LIB_Dialog reads itself.
+- **Finding his clips.** A character macro's `<identification page="…"/>` is its *voice
+  page* — Boso Ta is 10201 — and audio is one file per line at
+  `voice-l044/10201/comm/<line>.ogg`. 64 of the 72 line ids vanilla uses for him resolve
+  there, which is what confirmed the mapping. **An id with no `.ogg` plays silently**, so
+  presence in that folder is a hard requirement: a missing recording looks exactly like a
+  cue that never fired.
+- **`!boso random` needed a generated pool.** Page 10201 is a *shared* voice page ("Boron
+  NPC 1 / Boron rep / Misc Plot Characters"), 2422 entries. `tools/gen_boso_lines.py`
+  filters to 1263 usable lines — id ≥ 99901, has audio, no `(* … *)` headers, no
+  `{page,line}` redirects, no `$PLACEHOLDER$`, ≤120 chars, and no stage directions
+  mid-string (a leading `(annoyed)` is stripped by the game, anything later is drawn in
+  the subtitle) — and writes `md/twitch_boso_lines.xml`.
+- **Why the pool lives in MD, not the bridge.** A line id can only ever be chosen
+  game-side: numbers don't marshal Lua→MD and MD has no string→number conversion. So the
+  bridge can say `random` but can never name a line. Split into 4 chunks because the whole
+  list is ~14k chars and the largest list literal in vanilla MD is 8674.
+
+**The bug worth remembering.** Calls were first queued in a sub-cue whose `<conditions>`
+were bare `<check_value>`s — polled until the player was free. That is correct and
+idiomatic for an ordinary cue (vanilla's own Boso call does it) but **illegal inside an
+`instantiate="true"` cue's subtree**, and the game says so at load:
+
+```
+twitch_integration.xml(1944): Found non-event condition 'check_value', event condition required!
+```
+
+A rejected cue is simply *absent*, so it failed silently: `x4debug.txt` showed
+`boso_call queued mood=random line=30222178` and then nothing, forever. `md.xsd` validates
+the file happily — it is a load-time rule, not a schema rule. Two things came out of it:
+
+- the wait is now a **signalled loop** (`Twitch_BosoPump`: `event_cue_signalled` + delay +
+  re-signal while work remains), the idiom `Twitch_RetryRead` already proved here, with the
+  queue on a plain top-level cue so one name resolves it from anywhere;
+- `tools/test_md_sync.py` now **walks the cue tree** and fails if any cue under an
+  instantiated cue lacks an event condition. Schema validation and that walk catch disjoint
+  classes of bug.
+
+Also corrected while in there: the give-up timer started as a retry *count*, which with N
+queued calls expires ~N× early (every loop touches the same head entry). It is a wall-clock
+`player.age + 15min` deadline stamped at dispatch. Blocked calls otherwise wait
+indefinitely and are never refunded for the player merely being busy.
+
+**Known-bad, untouched:** `Twitch_RankWatch` re-arms with `signal_cue … param="$metrics"`,
+but `signal_cue` accepts neither `param` nor `delay` — the baseline is silently dropped
+every tick. Flagged, not fixed: it is a self-signalling loop and a blind change risks a hot
+loop.
+
+---
+
+## 2026-08-06 — Station building: chat can build a station in any sector
+Viewers can now buy a **complete station** and place it in the player's sector or in any
+sector they name: `!buy wharf`, `!buy defence argon prime`, `!buy solar black hole sun iv`.
+Eight types (defence platform, solar plant, trading station, equipment dock, wharf, shipyard;
+plus a hostile Raider den and a Kha'ak hive, both off by default like the other destructive
+tiers).
+
+- **MD (`Twitch_SpawnStation` library + one cue per type).** `create_station` with a
+  `constructionplan` id from vanilla `libraries/constructionplans.xml` and
+  `state="componentstate.operational"` arrives **fully built** — shape copied verbatim from
+  `md/scenario_advanced.xml`, `md/story_paranid.xml` and `md/x4ep1_mentor_subscription.xml`.
+  The library then does what the base game does around such a station: `signal_objects
+  'init station'` (hands it to the economy/station manager), manager + defence control posts,
+  and a paid build plot (the `SetupHQ` idiom) so the player can extend it.
+- **Why one cue per station type.** A command carries exactly ONE string to MD (the ui lua
+  ';'-joins the arg values into `event.param3`) and **MD has no string operations at all** —
+  the `string` datatype in `scriptproperties.xml` has a single property, so there is no split
+  and no substring. Of the two things a station spawn needs — which station, which sector —
+  only one can be the argument. Types are few and fixed, sectors are 155+, so the TYPE became
+  the command id (= the cue's `control`) and the SECTOR became the argument.
+- **`tools/gen_sectors.py` → `sectors.json` → `sectors.py`.** Same shape as the ship
+  registry: the generator reads `maps/xu_ep2_universe/*sectors.xml` (sector macros, base +
+  every installed DLC), `libraries/mapdefaults.xml` (each sector's `{page,line}` name ref) and
+  `t/0001-l044.xml`, and emits 155 rows of `{key, label, macro}`. `sectors.py` resolves viewer
+  text to one of them (exact → unique prefix → substring, apostrophes ignored, `here`/omitted
+  = the player's sector) and the bridge sends the **macro name**, which MD turns back into a
+  sector with `find_sector macro="macro.{$m}"`. Re-run the generator after installing a DLC.
+- **`arg_domain="sector"`** joins the whole tail of the `!buy` line into one value (sector
+  names are multi-word), so a typo or an ambiguous name is refused *before* the charge —
+  `!buy wharf grand exchange` answers "which sector? Grand Exchange I, III, IV".
+  New `!sectors <name>` info command checks a name; `!buy station` prints the menu.
+- **Refund on failure (`cmdfail`).** A build can fail in-game — `safepos` finds no room —
+  after the bridge has already charged. New X4→bridge message `{"t":"cmdfail","id":…,
+  "reason":…}`: MD's `Twitch_Fail` cue emits it, the bridge gives the coins back, restores
+  the pre-purchase karma (restored, not re-derived — `new_karma()` clamps, so an inverse
+  would drift a viewer at the floor/cap), releases the cooldown and the window cap, and
+  posts the apology. MD names only the ACTION because it never learns the buyer — the
+  command's `by` field stops at the bridge, since the ui lua forwards only arg values — so
+  the bridge matches the id against its own record of what it charged, oldest-first.
+  Failed disarm/loot ("no station in this sector") refund the same way.
+- **Ownership (2026-08-06, same day).** Stations are built for the **Twitch Allies**
+  faction by default, not the player: friendly, they defend the sector and trade, but
+  they are not free real estate on the player's account. The streamer flips the default
+  with a dashboard switch (`Runtime.stations_to_player`), and a viewer overrides it for
+  one buy by ending the line with `player` or `ally`. `twitchally` LOST its
+  `noresupply notradeoffer privateloadout privateship` tags — correct while it owned
+  nothing, but they would have left a built wharf docked with an empty shelf. The
+  Raider den and the Kha'ak hive declare no `owner` arg and so cannot be redirected.
+  This is the first consumer of the ui lua's 2-arg form: a station buy now carries WHERE
+  and WHO, and MD reads them from `event.param2`/`param3` on the `Twitch_<id>` screen —
+  no string splitting, which MD still cannot do.
+- **Staffing (first live test).** Stations built fine but were GHOST TOWNS: no workforce,
+  nobody at the manager office, the trader's corner or the ship dealership. Two causes,
+  both ours. (a) `signal_objects 'init station'` was sent with `param3="false"`. That flag
+  is named `$gamestartstation` but means "arrived complete rather than built over time",
+  and it gates the whole workforce block in `inituniverse.xml` — so the station hired
+  nobody, ever. The base game's own build-it-complete path, `finalisestations.xml`, passes
+  `true`. (b) We created the manager control entity OURSELVES, which poisoned the base
+  game's setup: `CreateTradeManagerEntity` is guarded by `not $controllable.tradenpc.exists`,
+  and `signal_objects` is queued while our actions are not — so our manager always won the
+  race and vanilla skipped the trader's corner AND never got to the ship dealer.
+  Fix: an NPC-owned station is now staffed entirely by `'init station'` (workforce, trade
+  wares, ammo, defence + engineer, ship dealer, trade manager). Only PLAYER-owned stations
+  are staffed by hand, because `InitStation` deliberately skips them and the
+  `event_player_built_station` path that normally covers them never fires for an
+  MD-created station; that branch now mirrors it properly (defence + engineer +
+  `create_ai_unit`, plus a manager).
+- **A faction with no people (second live test).** With the staffing fixed, the log named
+  the real blocker: `CharacterDB::FindNPCGenerator(): unable to find NPC generator for tags
+  shiptrader, race null, factions Twitch Allies`, and
+  `PlaceItemTrader: Twitch Wharf has a trader corner but the faction has no character
+  definition for a suitable trader`. X4 resolves the NPC for a post by looking up
+  (tags, faction) in `libraries/characters.xml`; a faction named in NO entry can have no
+  people at all — note `race null`, so `primaryrace="argon"` in factions.xml does not feed
+  this lookup. New generated diff `libraries/characters.xml` (`tools/gen_characters.py`)
+  adds both Twitch factions to every character entry the Argon factions can draw on:
+  manager, ship trader, platform (trader-corner) trader, service crew, marines, pilots,
+  casuals. DLC-defined entries are emitted `silent="true"` so the diff doesn't error for
+  someone who lacks that DLC. An XML diff can't append to an attribute, only replace it
+  whole, so the file copies vanilla's lists — hence the generator: re-run it after a game
+  update, like `gen_ships.py` / `gen_sectors.py`.
+- **An owner faction needs an ECONOMY (third live test).** With staff on board, a
+  twitchally wharf listed every ship hull and no equipment — no shields, engines,
+  weapons or software. Not blueprints and not licences (the log is silent when that
+  menu opens): a dock does not conjure equipment, it makes it from COMPONENTS flown in
+  by the owning faction's equipment traders. Vanilla has exactly twelve such jobs, an
+  L and an M per economic faction, and the log even shows one working
+  (`job: 'holyorder_equipment_trader_m'`). twitchally had none, no traders, and no
+  money — so the shop had no raw material and nothing was ever going to bring it any.
+  New `libraries/jobs.xml` diff clones `argon_equipment_trader_m`/`_l` for twitchally
+  with three changes: `buildatshipyard="false" gate="true"` (vanilla builds traders at
+  a shipyard OF THE OWNING FACTION — twitchally has none, so the quota could never be
+  filled; the Kha'ak jobs use the same escape hatch), an Argon HULL with a twitchally
+  OWNER (ship selection by faction goes through the ware `<owner>` lists, which name
+  no Twitch faction), and no `relation="ally"` location filter (twitchally is +1 with
+  everyone, so it would be a no-op). Quotas well under Argon's. `twitchally` also
+  gained an `<account>` — its traders have to BUY before they can deliver.
+  Plus a **kickstart**: a station that can build or equip ships is seeded with starter
+  stock at spawn (energycells, hullparts and the equipment-basket components), so it is
+  useful the moment it appears instead of waiting on the first trader run. Sized off the
+  station's OWN `cargo.{$ware}.free` — a quarter of free space, capped at 1500 — because a
+  defence platform and a shipyard have wildly different holds, and free space is already 0
+  for anything a station cannot store, so wrong wares cost nothing.
+- **A macro that isn't vanilla.** `station_arg_defence_base_01_macro` looked exactly like
+  every other station hull and was picked for the defence platform from a survey that
+  scanned every `.cat` in the install — including installed third-party mods. It ships in
+  `faction_fix_pack`, not the base game, so on load: `Property lookup failed: macro.
+  station_arg_defence_base_01_macro`, a null macro, and a station that silently never
+  builds. The only vanilla `*_defence_base_*` is the Xenon one; vanilla pairs the
+  `arg_defence` PLAN with `station_gen_factory_base_01_macro` (md/scenario_tutorials.xml),
+  which is the library default, so the override just went away. New
+  `tools/check_macros.py` audits every `macro.<name>` / `macro="<name>"` in our MD against
+  the base archives + `extensions/ego_dlc_*` ONLY — the standard the mod has to meet, since
+  it must work on a plain X4 + DLC install.
+- **Equipment, both halves.** Two independent gates stood between a twitchally dock and
+  a sellable shield. (1) OWNERSHIP: every ware lists the factions that have it via
+  `<owner faction="…"/>`; twitchally was in none. New generated `libraries/wares.xml`
+  (`tools/gen_ware_owners.py`) grants it every ware restricted by `generaluseequipment`
+  or `militaryequipment` — 449 across base + DLC — scoped by the game's own restriction
+  licence rather than a hard-coded list, and excluding the 53 owned only by xenon/khaak
+  (alien hardware on an Argon-flavoured ally's shelves). It uses `<add>`, which APPENDS
+  an `<owner>`, so unlike characters.xml it never rewrites a vanilla list and cannot
+  drift. (2) LICENCES: a faction may only sell a restricted ware to someone holding a
+  licence of that type ISSUED BY THAT FACTION, and twitchally had no `<licences>` block
+  at all — every vanilla faction owning a tradeable station has one, and the ones without
+  (civilian, criminal, outlaw, smuggler, xenon, khaak) are exactly those that sell
+  nothing. It now issues generaluseequipment / generaluseship / militaryequipment /
+  capitalequipment at `minrelation="-0.01"`, granted on sight since it starts allied,
+  with names on this mod's own text page rather than borrowed Argon wording. The patched
+  faction document was validated against the game's `factions.xsd`, not just eyeballed.
+- Verified: whole bridge suite green (new `test_sectors.py`, station + refund + ownership
+  cases in `test_economy.py`, and end-to-end cases in `test_lua_decode.py` pinning
+  `("Twitch_station_wharf", "<macro>", "<owner>")`, the empty-sector = current-sector
+  contract, and the literal `cmdfail` line — all through the real Lua). The MD file
+  validates against the game's own `libraries/md.xsd` apart from one pre-existing
+  `signal_cue param` in the rank watcher. Station building confirmed working in-game;
+  ownership and refunds are not yet exercised live.
+
+## 2026-08-06 — Two silent-failure bugs, MD schema validation, and adopted ships
+A long session that started as "the faction incident is a bit buggy" and ended with a
+whole subsystem. The through-line: **every bug found today failed silently**, and the
+fixes are as much about making failure visible as about the code.
+
+- **`$var?` means "is DEFINED", not "is non-null".** `<set_value exact="null"/>` *defines*
+  the variable, so `$facA?` was true while `$facA` was null, every `not $facA?` guard was
+  skipped, and `Twitch_OnFactionIncident` reached `add_faction_relation` with two nulls —
+  "Relations between null and null". It had never worked on any path. Diagnosed from
+  `x4debug.txt`, and specifically from what was **absent**: no error above the failing
+  action proved the guards had evaluated true. Vanilla always compares (`== null`).
+  The same trap was in the station cue and the rank cues' "coalesce to 0" guards.
+- **Lua `pairs()` order is undefined**, so multi-arg commands silently swapped —
+  `{"ware","qty"}` arrived as `"50;energycells"`. Commands now carry `argv`, an ordered
+  array; `args` stays for logs. This is what "can't send multiple variables" actually was.
+- **MD schema validation** (`_scratch/md.xsd` + lxml) is the cheapest bug-per-minute tool
+  we have. It found `reason` being `use="required"` on `add_faction_relation` (so the
+  action was a no-op — switched to `set_faction_relation`, which is what vanilla uses for
+  NPC↔NPC anyway), and `signal_cue` accepting neither `param` nor `delay` — an ignored
+  `delay="2s"` had turned a pipe retry into a ~60/second hot loop. Also caught `--` inside
+  an XML comment, which makes the *entire* mdscript unparseable.
+- **Build stamp.** MD only reloads on save load, so a correct fix looks broken. Every
+  outbound chat line now carries a build tag set in one place (`Twitch_Say`). This
+  resolved a round of "still broken" that was purely a stale script. The bridge has no
+  equivalent yet — a stale companion silently ignores unknown `!commands`, which cost a
+  round on `!abandon`.
+- **Adopted ships** (see `docs/10`). Viewers claim a real ship out of the player's fleet;
+  it is renamed after them, they can check its hull and location, and they can pay to
+  rebuild it when it dies. Two X4 findings made it possible: `<event_ui_triggered>`
+  carries three strings and `control` is optional (the only way to get two values into a
+  cue, since MD cannot split a string), and `<event_object_destroyed>` takes a `group`
+  whose membership can change after the event is armed (one cue watches every adopted
+  ship). Design rule that fell out of it: **only tokens cross the pipe** — id codes and
+  macros, never names — because MD builds its JSON by concatenation.
+- **X4 acknowledges failure only.** So `cmdfail` now carries `ref`, naming what failed.
+  Without it the bridge guessed "oldest outstanding charge", which rolled back an
+  *earlier successful* adoption and refunded the wrong viewer.
+- Also: Twitch Allies are a pickable incident faction; `!buy stance <faction>
+  ally|neutral|war` sets standing by the game's own relation *bands* (`relation.<range>.mid`)
+  rather than hardcoded numbers; one ship per viewer; an append-only adoption record
+  surfaced in the moderation table.
+- The x4-modding skill absorbed the reusable half of all this (expression traps, the
+  two-string event, group death-watch, schema + log recipes, reload semantics).
+
 ## 2026-06-10 — Catalog becomes the interactions roadmap (status field + shareable page)
 With the bridge proven, the next phase is implementing the actual interactions — which needs
 a tracker for done / in-progress / suggested. Per doc 08 §10 ("no second catalog, ever") the
