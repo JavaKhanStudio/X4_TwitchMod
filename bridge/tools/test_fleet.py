@@ -229,6 +229,7 @@ check(fl5.owner_of("ONE-002") is None, "...even though the adoption itself is go
 
 # ---- live status on the roster ---------------------------------------------
 from twitch_bridge import sectors as sectorreg  # noqa: E402
+
 somesector = next(iter(sectorreg.SECTORS.values()))
 fl.update(protocol.fleet(f"STA-001|{known.macro}|{known.size}|87|100|{somesector.macro};"
                          f"OLD-001|{known.macro}|{known.size}", total=2, sent=2))

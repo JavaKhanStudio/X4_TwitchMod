@@ -13,11 +13,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from twitchAPI.twitch import Twitch
-    from twitchAPI.oauth import UserAuthenticationStorageHelper
-    from twitchAPI.eventsub.websocket import EventSubWebsocket
-    from twitchAPI.type import AuthScope
     import twitchAPI.object.eventsub as es
+    from twitchAPI.eventsub.websocket import EventSubWebsocket
+    from twitchAPI.oauth import UserAuthenticationStorageHelper
+    from twitchAPI.twitch import Twitch
+    from twitchAPI.type import AuthScope
 except ImportError:
     print("FAIL: twitchAPI not installed (pip install -r requirements.txt; under WSL use py.exe)")
     sys.exit(1)
@@ -73,6 +73,7 @@ for wrapper, want in payloads.items():
 
 # Our module imports cleanly and builds its scope list.
 from twitch_bridge.sources import twitch as T  # noqa: E402
+
 check(T._IMPORT_ERROR is None, "twitch.py imports twitchAPI cleanly")
 check(len(T._scopes()) == 7, "twitch.py _scopes() builds 7 scopes")
 

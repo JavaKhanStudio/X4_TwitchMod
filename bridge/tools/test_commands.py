@@ -153,6 +153,7 @@ check(eng.process(protocol.chat("mod", "!armada", badges=["moderator"])) == [],
 
 # every mood the bridge advertises must exist in the MD cue's parallel $moods list
 import re  # noqa: E402
+
 from twitch_bridge.catalog import BOSO_MOODS  # noqa: E402
 
 md_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -213,6 +214,7 @@ check(len(ids) > 1000, f"pool carries the full line set ({len(ids)} ids)")
 
 # testing mode: cooldowns disabled -> the same command fires back-to-back
 from twitch_bridge.runtime import Runtime  # noqa: E402
+
 rt = Runtime(cooldowns_enabled=False)
 eng2 = CommandEngine(STARTER, clock=clk, runtime=rt)
 a = eng2.process(protocol.chat("eve", "!ping"))

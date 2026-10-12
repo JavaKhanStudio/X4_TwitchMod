@@ -7,7 +7,11 @@ Run the companion must be STOPPED first (it owns the pipe). Usage:
     py bridge/tools/x4_probe.py
 """
 from __future__ import annotations
-import asyncio, json, os, sys
+
+import asyncio
+import json
+import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from twitch_bridge import protocol  # noqa: E402

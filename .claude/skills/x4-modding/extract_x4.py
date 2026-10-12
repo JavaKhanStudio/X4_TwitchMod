@@ -14,7 +14,10 @@ Usage:
 
 Paths are the in-archive virtual paths (forward slashes), case-insensitive.
 """
-import os, sys, glob, argparse
+import argparse
+import glob
+import os
+import sys
 
 DEFAULT_X4 = r"E:\steam\steamapps\common\X4 Foundations"
 

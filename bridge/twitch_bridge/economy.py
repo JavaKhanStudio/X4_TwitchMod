@@ -11,14 +11,21 @@ import time
 from collections import deque
 from typing import ClassVar
 
+from . import fleet as fleetreg
 from . import protocol
 from . import sectors as sectorreg
 from . import ships as shipreg
-from .catalog import (CATALOG, FACTION_KEYS, STANCE_KEYS, STANCE_TARGETS,
-                      StoreEvent, resolve_faction, resolve_stance)
-from . import fleet as fleetreg
-from .fleet import Fleet, FleetShip
+from .catalog import (
+    CATALOG,
+    FACTION_KEYS,
+    STANCE_KEYS,
+    STANCE_TARGETS,
+    StoreEvent,
+    resolve_faction,
+    resolve_stance,
+)
 from .commands import ROLE_RANK, role_of
+from .fleet import Fleet, FleetShip
 from .runtime import Runtime
 from .wallet import EconomySettings, Wallet
 

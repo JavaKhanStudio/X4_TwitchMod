@@ -26,7 +26,9 @@ p = tempfile.mktemp(suffix=".json")
 setup_store.save({"client_id": "abc", "client_secret": "shh", "channel": "Me"}, p)
 got = setup_store.load(p)
 check(got == {"client_id": "abc", "client_secret": "shh", "channel": "Me"}, "setup_store round-trip")
-import os, sys
+import os
+import sys
+
 if sys.platform == "win32":
     # POSIX mode bits don't apply on Windows (os.chmod only toggles read-only);
     # the secret is protected by the per-user profile's NTFS ACL instead.

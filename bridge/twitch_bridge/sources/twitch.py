@@ -27,9 +27,9 @@ from .base import Source
 log = logging.getLogger("source.twitch")
 
 try:
-    from twitchAPI.twitch import Twitch
-    from twitchAPI.oauth import UserAuthenticationStorageHelper
     from twitchAPI.eventsub.websocket import EventSubWebsocket
+    from twitchAPI.oauth import UserAuthenticationStorageHelper
+    from twitchAPI.twitch import Twitch
     from twitchAPI.type import AuthScope
     _IMPORT_ERROR: Exception | None = None
 except Exception as e:  # pragma: no cover - exercised only without the dep

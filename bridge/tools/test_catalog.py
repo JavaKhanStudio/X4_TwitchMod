@@ -7,7 +7,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from twitch_bridge.catalog import (  # noqa: E402
-    CATALOG, KARMA, KINDS, STARTER, STATUS, TIERS, StoreEvent, catalog_view)
+    CATALOG,
+    KARMA,
+    KINDS,
+    STARTER,
+    STATUS,
+    TIERS,
+    StoreEvent,
+    catalog_view,
+)
 
 ok = True
 

@@ -69,6 +69,7 @@ a.karma = 140
 a.coins = 0
 w2.award()
 import math
+
 check(a.coins == math.ceil(s.coin_amount * 1.4), "karma scales income (140 -> 1.4x)")
 
 # activity decay: idle past no_coins_after earns nothing

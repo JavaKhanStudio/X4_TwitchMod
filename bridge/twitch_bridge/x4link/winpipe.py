@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import asyncio
 
+from .. import protocol
 from . import base
 from .base import BaseX4Link
-from .. import protocol
 
 log = base.log
 
