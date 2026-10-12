@@ -14,7 +14,7 @@ These are placeholders, not real paths (SECURITY.md).
 |---|---|---|
 | `ET.parse` of the MD | `--` in a comment, broken XML: the whole file fails to load | in the #mod pack |
 | `bridge/tools/test_md_sync.py` | a cue under an instantiated cue with no event condition (dropped at load); catalog ↔ MD drift | in the #mod pack |
-| md.xsd validation (SKILL.md recipe, Windows `py` + lxml) | unknown attributes, e.g. `signal_cue param=` and `delay=`; a missing required `reason` | a recipe only, ~2 min |
+| `py.exe bridge/tools/validate_md.py` (md.xsd, Windows `py` + lxml) | unknown attributes, e.g. `signal_cue param=` and `delay=`; a missing required `reason` | ~2 min, or 0.2 s with `--serve` up (r43) |
 | `bridge/tools/test_lua_decode.py` (lupa) | the Lua JSON decode and the argv joining | runs under Windows `py` only (r37) |
 | `mock_x4.py` + the smoke test | the bridge ↔ pipe protocol, with the game faked | in the #companion pack |
 
@@ -23,11 +23,10 @@ a ship spawns, that chat shows the line. Those are runtime facts, and today they
 round with Simon each.
 
 Cheap wins left in tier 0:
-- An MD lint for the SKILL.md traps that neither the schema nor the sync test sees:
-  - `$Build` not bumped when the MD file changed;
-  - `<signal_cue>` with `param` or `delay` (md.xsd catches this too, but takes 2 min);
-  - `event.param?` on a cue only ever reached by `signal_cue`.
-- The md.xsd recipe as one script that caches the compiled schema.
+- Done in r42: `bridge/tools/test_md_lint.py`, an MD lint for the SKILL.md traps that
+  neither the schema nor the sync test sees ($Build not bumped, `signal_cue` param or delay,
+  and `event.param` on a cue only `signal_cue` reaches).
+- Done in r43: the md.xsd recipe as one script, `bridge/tools/validate_md.py`.
 
 ## Tier 1 — X4 runs, driven by the agent (needs Simon's go, see r2)
 
