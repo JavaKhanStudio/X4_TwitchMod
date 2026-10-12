@@ -18,6 +18,12 @@ time in ISO format), so every checkout and session sees the same one and nothing
 can commit it. The gate also refuses when X4 is already running (Simon is playing,
 or a run leaked) and when Steam is not.
 
+X4 is ONE resource for the whole machine: every board and checkout shares the
+game, its extensions folder and the profile. `run` holds an exclusive lock
+(%USERPROFILE%\\.x4-agent-run.lock, an OS file lock, so it frees itself when the
+holder dies) from before deploy.ps1 until X4 is killed; a second `run` is refused
+at once and told who holds it (.x4-agent-run.who), never queued behind it.
+
 The log is <PROFILE>\\agent_x4.txt, written by X4 itself (-logfile). It is deleted
 before each run, so a match always comes from this launch.
 """
@@ -33,6 +39,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 HOME = Path(os.environ.get("USERPROFILE", str(Path.home())))
 AWAY = HOME / ".x4-agent-away"
+LOCK = HOME / ".x4-agent-run.lock"
+WHO = HOME / ".x4-agent-run.who"
 LOGNAME = "agent_x4.txt"
 X4_CANDIDATES = [
     r"E:\steam\steamapps\common\X4 Foundations",
@@ -64,7 +72,7 @@ def away_until() -> datetime | None:
         return None
 
 
-def gate() -> list[str]:
+def gate(locked: bool = False) -> list[str]:
     """Every reason not to launch; empty means go."""
     why = []
     until = away_until()
@@ -72,11 +80,47 @@ def gate() -> list[str]:
         why.append(f"Simon is not marked away (no {AWAY}; he runs tools/x4-away.cmd)")
     elif until < datetime.now().astimezone():
         why.append(f"Simon's away mark expired at {until:%Y-%m-%d %H:%M}")
-    if running("X4.exe"):
+    if not locked and not lock_free():
+        why.append(f"another agent run holds X4: {holder()}")
+    elif running("X4.exe"):
         why.append("X4.exe is already running (Simon playing, or a leaked run)")
     if not running("steam.exe"):
         why.append("Steam is not running")
     return why
+
+
+def take_lock():
+    """The open lock file if this process now holds X4, else None.
+
+    msvcrt.locking is released by Windows when the process exits, so a run that
+    crashes or is killed never leaves the game locked."""
+    import msvcrt
+    f = open(LOCK, "a+b")
+    f.seek(0)
+    try:
+        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError:
+        f.close()
+        return None
+    who = os.environ.get("ATELIER_AGENT") or os.environ.get("USERNAME") or "?"
+    WHO.write_text(f"{who} pid {os.getpid()} since {datetime.now():%H:%M:%S} in {REPO}",
+                   encoding="utf-8")
+    return f
+
+
+def holder() -> str:
+    try:
+        return WHO.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+
+
+def lock_free() -> bool:
+    f = take_lock()
+    if f is None:
+        return False
+    f.close()
+    return True
 
 
 def x4_dir() -> Path:
@@ -109,7 +153,19 @@ def launch(x4: Path) -> subprocess.Popen:
 
 
 def cmd_run(args) -> int:
-    why = gate()
+    lock = take_lock()
+    if lock is None:
+        say(f"REFUSED: another agent run holds X4: {holder()}")
+        return 2
+    try:
+        return run_locked(args)
+    finally:
+        WHO.unlink(missing_ok=True)
+        lock.close()
+
+
+def run_locked(args) -> int:
+    why = gate(locked=True)
     if why:
         for w in why:
             say("REFUSED: " + w)

@@ -98,7 +98,10 @@ X4 is a Windows game on this machine (<X4> on drive E, reachable under WSL at /m
 needs Simon's GPU and screen. MD/Lua changes take effect on loading a save, after `deploy.ps1`
 copies them in. An agent launches X4 ONLY through `py.exe bridge/tools/x4_run.py run`. It
 refuses unless Simon has marked himself away with tools/x4-away.cmd (r24); `x4_run.py status`
-says GO or why not. The harness always kills X4 at the end. Never launch X4 any other way,
+says GO or why not. X4 is ONE resource for the machine (every board shares it, r2): `run`
+holds a machine lock from deploy to kill, and a second run is refused at once naming the holder
+— do not retry in a loop; say so and release. The harness always kills X4 at the end. Never
+launch X4 any other way, and never run deploy.ps1 by hand while a run holds X4,
 and never touch the save folder unless the ticket asks. When the gate says NO, say what Simon
 must load and what chat should show.
 """
