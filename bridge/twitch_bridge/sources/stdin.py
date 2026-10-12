@@ -11,27 +11,40 @@ import asyncio
 import json
 import logging
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 from .. import protocol
 from .base import Source
 
 log = logging.getLogger("source.stdin")
 
-HELP = """\
-fake-twitch commands (-> run through the command engine, like real events):
-  chat <user> <message...>        a chat message (no badges)
-  chatas <role> <user> <msg...>   chat with a badge (role: subscriber|vip|moderator|broadcaster)
-  redeem <user> <reward...>       channel-points redemption
-  sub <user> [tier] [months]      subscription
-  cheer <user> <bits>             bits
-  raid <user> <viewers>           raid
-  follow <user>                   follow
-  ready                           emit the 'ready' handshake
-  {...}                           raw protocol JSON, passed through
-  help                            this help
-  quit                            stop the bridge
-"""
+# command -> (usage, what it does, args -> event). The help is built from this, so
+# a command cannot exist without being listed, or be listed without existing.
+COMMANDS: dict[str, tuple[str, str, Callable[[list[str]], dict]]] = {
+    "chat": ("<user> <message...>", "a chat message (no badges)",
+             lambda a: protocol.chat(a[0], " ".join(a[1:]))),
+    "chatas": ("<role> <user> <msg...>",
+               "chat with a badge (role: subscriber|vip|moderator|broadcaster)",
+               lambda a: protocol.chat(a[1], " ".join(a[2:]), badges=[a[0]])),
+    "redeem": ("<user> <reward...>", "channel-points redemption",
+               lambda a: protocol.redeem(a[0], " ".join(a[1:]))),
+    "sub": ("<user> [tier] [months]", "subscription",
+            lambda a: protocol.sub(a[0], a[1] if len(a) > 1 else "1000",
+                                   int(a[2]) if len(a) > 2 else 1)),
+    "cheer": ("<user> <bits>", "bits", lambda a: protocol.cheer(a[0], int(a[1]))),
+    "raid": ("<user> <viewers>", "raid", lambda a: protocol.raid(a[0], int(a[1]))),
+    "follow": ("<user>", "follow", lambda a: protocol.follow(a[0])),
+    "ready": ("", "emit the 'ready' handshake", lambda a: protocol.ready()),
+}
+# Handled outside the table: raw JSON in _parse, help in _parse, quit in events().
+_OTHERS = [("{...}", "raw protocol JSON, passed through"),
+           ("help", "this help"),
+           ("quit", "stop the bridge")]
+
+HELP = ("fake-twitch commands (-> run through the command engine, like real events):\n"
+        + "".join(f"  {left:<32}{what}\n" for left, what in
+                  [(f"{c} {usage}".strip(), what) for c, (usage, what, _) in COMMANDS.items()]
+                  + _OTHERS))
 
 
 def _parse(line: str) -> dict | None:
@@ -45,34 +58,19 @@ def _parse(line: str) -> dict | None:
             log.warning("bad JSON: %s", e)
             return None
 
-    parts = line.split()
-    cmd, args = parts[0].lower(), parts[1:]
+    cmd, *args = line.split()
+    cmd = cmd.lower()
+    if cmd == "help":
+        print(HELP, end="")
+        return None
+    if cmd not in COMMANDS:
+        log.warning("unknown command %r; type 'help'", cmd)
+        return None
     try:
-        if cmd == "help":
-            print(HELP, end="")
-            return None
-        if cmd == "chat":
-            return protocol.chat(args[0], " ".join(args[1:]))
-        if cmd == "chatas":  # chatas <role> <user> <msg...>
-            return protocol.chat(args[1], " ".join(args[2:]), badges=[args[0]])
-        if cmd == "redeem":
-            return protocol.redeem(args[0], " ".join(args[1:]))
-        if cmd == "sub":
-            return protocol.sub(args[0], args[1] if len(args) > 1 else "1000",
-                                int(args[2]) if len(args) > 2 else 1)
-        if cmd == "cheer":
-            return protocol.cheer(args[0], int(args[1]))
-        if cmd == "raid":
-            return protocol.raid(args[0], int(args[1]))
-        if cmd == "follow":
-            return protocol.follow(args[0])
-        if cmd == "ready":
-            return protocol.ready()
+        return COMMANDS[cmd][2](args)
     except (IndexError, ValueError):
         log.warning("usage error; type 'help'")
         return None
-    log.warning("unknown command %r; type 'help'", cmd)
-    return None
 
 
 class StdinSource(Source):
