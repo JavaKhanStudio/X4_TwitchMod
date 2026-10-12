@@ -1074,41 +1074,24 @@
               <!-- The rest of the battle group, one row per hull. $radius is the
                    elbow room that hull needs at the staging point. -->
               <set_value name="$Wings" exact="[
-                table[$macro=macro.ship_xen_xl_destroyer_01_a_macro, $count=3, $radius=1.2km],
-                table[$macro=macro.ship_xen_m_corvette_02_a_macro,   $count=4, $radius=0.5km],
-                table[$macro=macro.ship_xen_m_fighter_01_a_macro,    $count=6, $radius=0.5km],
-                table[$macro=macro.ship_xen_s_fighter_01_a_macro,    $count=4, $radius=0.3km],
-                table[$macro=macro.ship_xen_s_fighter_02_a_macro,    $count=4, $radius=0.3km]]"/>
-              <do_all exact="$Wings.count" counter="$w">
-                <set_value name="$Wing" exact="$Wings.{$w}"/>
-                <do_all exact="$Wing.$count">
-                  <!-- Clear it first: without this a failed create leaves the
-                       PREVIOUS ship in $Escort and the guard below would re-order
-                       a ship that already has its orders. -->
-                  <remove_value name="$Escort"/>
-                  <create_ship name="$Escort" macro="$Wing.$macro" sector="$ref.sector">
-                    <owner exact="faction.xenon" overridenpc="true"/>
-                    <pilot>
-                      <select faction="faction.xenon" tags="tag.pilot"/>
-                    </pilot>
-                    <loadout>
-                      <quantity exact="1.0"><variation exact="0"/></quantity>
-                      <quality exact="0.5"/>
-                    </loadout>
-                    <orientation refobject="$ref" orientation="look_at"/>
-                    <safepos value="$Staging" radius="$Wing.$radius"/>
-                  </create_ship>
-                  <do_if value="$Escort?">
-                    <cancel_all_orders object="$Escort"/>
-                    <create_order id="'AssignCommander'" object="$Escort">
-                      <param name="commander" value="$Flagship"/>
-                      <param name="assignment" value="assignment.attack"/>
-                      <param name="cancelorders" value="true"/>
-                    </create_order>
-                    <set_value name="$Spawned" exact="$Spawned + 1"/>
-                  </do_if>
-                </do_all>
-              </do_all>
+                table[$macro='ship_xen_xl_destroyer_01_a_macro', $count=3, $radius=1.2km],
+                table[$macro='ship_xen_m_corvette_02_a_macro',   $count=4, $radius=0.5km],
+                table[$macro='ship_xen_m_fighter_01_a_macro',    $count=6, $radius=0.5km],
+                table[$macro='ship_xen_s_fighter_01_a_macro',    $count=4, $radius=0.3km],
+                table[$macro='ship_xen_s_fighter_02_a_macro',    $count=4, $radius=0.3km]]"/>
+              <!-- race.xenon finds the same pilot faction.xenon did: the one
+                   Xenon character (xenon_generic) is both. -->
+              <run_actions ref="Twitch_SpawnEscorts" result="$Escorts">
+                <param name="Wings" value="$Wings"/>
+                <param name="Flagship" value="$Flagship"/>
+                <param name="Ref" value="$ref"/>
+                <param name="Staging" value="$Staging"/>
+                <param name="Owner" value="faction.xenon"/>
+                <param name="PilotRace" value="race.xenon"/>
+                <param name="PilotTag" value="tag.pilot"/>
+                <param name="Quality" value="0.5"/>
+              </run_actions>
+              <set_value name="$Spawned" exact="$Spawned + $Escorts"/>
               <debug_text text="'[Twitch] xenon_armada: %s ships staged near %s'.[$Spawned, $ref.knownname]" filter="general"/>
               <signal_cue_instantly cue="Twitch_Say"
                 param="'XENON ARMADA! A Xenon I and %s escorts just came out of nowhere and they are coming for the player. Run, or find out.'.[$Spawned - 1]"/>
@@ -1263,37 +1246,18 @@
                 table[$macro='ship_ter_m_corvette_01_a_macro',     $count=4, $radius=0.5km, $name='Katana'],
                 table[$macro='ship_ter_s_heavyfighter_01_a_macro', $count=4, $radius=0.3km, $name='Gladius'],
                 table[$macro='ship_ter_s_fighter_01_a_macro',      $count=5, $radius=0.3km, $name='Kukri']]"/>
-              <do_all exact="$Wings.count" counter="$w">
-                <set_value name="$Wing" exact="$Wings.{$w}"/>
-                <do_all exact="$Wing.$count" counter="$i">
-                  <!-- Clear it first: without this a failed create leaves the
-                       PREVIOUS ship in $Escort and the guard below re-orders and
-                       renames a ship that is already in the fleet. -->
-                  <remove_value name="$Escort"/>
-                  <create_ship name="$Escort" macro="macro.{$Wing.$macro}" sector="$ref.sector">
-                    <owner exact="faction.twitchally" overridenpc="true"/>
-                    <pilot>
-                      <select race="race.argon" tags="tag.aipilot"/>
-                    </pilot>
-                    <loadout>
-                      <quantity exact="1.0"><variation exact="0"/></quantity>
-                      <quality exact="0.7"/>
-                    </loadout>
-                    <orientation refobject="$ref" orientation="look_at"/>
-                    <safepos value="$Staging" radius="$Wing.$radius"/>
-                  </create_ship>
-                  <do_if value="$Escort?">
-                    <set_object_name object="$Escort" name="'TER %s %s'.[$Wing.$name, $i]"/>
-                    <cancel_all_orders object="$Escort"/>
-                    <create_order id="'AssignCommander'" object="$Escort">
-                      <param name="commander" value="$Flagship"/>
-                      <param name="assignment" value="assignment.attack"/>
-                      <param name="cancelorders" value="true"/>
-                    </create_order>
-                    <set_value name="$Spawned" exact="$Spawned + 1"/>
-                  </do_if>
-                </do_all>
-              </do_all>
+              <run_actions ref="Twitch_SpawnEscorts" result="$Escorts">
+                <param name="Wings" value="$Wings"/>
+                <param name="Flagship" value="$Flagship"/>
+                <param name="Ref" value="$ref"/>
+                <param name="Staging" value="$Staging"/>
+                <param name="Owner" value="faction.twitchally"/>
+                <param name="PilotRace" value="race.argon"/>
+                <param name="PilotTag" value="tag.aipilot"/>
+                <param name="Quality" value="0.7"/>
+                <param name="NamePrefix" value="'TER'"/>
+              </run_actions>
+              <set_value name="$Spawned" exact="$Spawned + $Escorts"/>
               <debug_text text="'[Twitch] terran_taskforce: %s ships, target %s'.[$Spawned, $Target]" filter="general"/>
               <do_if value="$Target">
                 <signal_cue_instantly cue="Twitch_Say"
@@ -1796,6 +1760,71 @@
          answered "there is no station in this sector" while parked next to one.
          Twitch_SpawnStation never hit this because it does all its work inside the
          library and reads nothing back. -->
+    <!-- Spawns a flagship's escort wings and puts every escort under it, on
+         attack. Shared by Twitch_OnXenonArmada and Twitch_OnTerranTaskForce.
+         Returns how many escorts were created; a library reads nothing back
+         into its caller, so the count comes back through <return>.
+           $Wings      list of table[$macro=<macro NAME string>, $count, $radius
+                       (elbow room at the staging point), $name (optional)]
+           $Flagship   the commander every escort is assigned to
+           $Ref        what they face on arrival; $Ref.sector is where they spawn
+           $Staging    the staging position
+           $Owner      owning faction
+           $PilotRace, $PilotTag   the pilot <select>
+           $Quality    loadout quality
+           $NamePrefix null keeps the default names; otherwise each escort is
+                       named '<prefix> <$name> <n>' (e.g. 'TER Syn 1') -->
+    <library name="Twitch_SpawnEscorts" purpose="run_actions">
+      <params>
+        <param name="Wings"/>
+        <param name="Flagship"/>
+        <param name="Ref"/>
+        <param name="Staging"/>
+        <param name="Owner"/>
+        <param name="PilotRace"/>
+        <param name="PilotTag"/>
+        <param name="Quality"/>
+        <param name="NamePrefix" default="null"/>
+      </params>
+      <actions>
+        <set_value name="$Count" exact="0"/>
+        <do_all exact="$Wings.count" counter="$w">
+          <set_value name="$Wing" exact="$Wings.{$w}"/>
+          <do_all exact="$Wing.$count" counter="$i">
+            <!-- Clear it first: without this a failed create leaves the
+                 PREVIOUS ship in $Escort and the guard below re-orders and
+                 renames a ship that already has its orders. -->
+            <remove_value name="$Escort"/>
+            <create_ship name="$Escort" macro="macro.{$Wing.$macro}" sector="$Ref.sector">
+              <owner exact="$Owner" overridenpc="true"/>
+              <pilot>
+                <select race="$PilotRace" tags="$PilotTag"/>
+              </pilot>
+              <loadout>
+                <quantity exact="1.0"><variation exact="0"/></quantity>
+                <quality exact="$Quality"/>
+              </loadout>
+              <orientation refobject="$Ref" orientation="look_at"/>
+              <safepos value="$Staging" radius="$Wing.$radius"/>
+            </create_ship>
+            <do_if value="$Escort?">
+              <do_if value="$NamePrefix != null">
+                <set_object_name object="$Escort" name="'%s %s %s'.[$NamePrefix, $Wing.$name, $i]"/>
+              </do_if>
+              <cancel_all_orders object="$Escort"/>
+              <create_order id="'AssignCommander'" object="$Escort">
+                <param name="commander" value="$Flagship"/>
+                <param name="assignment" value="assignment.attack"/>
+                <param name="cancelorders" value="true"/>
+              </create_order>
+              <set_value name="$Count" exact="$Count + 1"/>
+            </do_if>
+          </do_all>
+        </do_all>
+        <return value="$Count"/>
+      </actions>
+    </library>
+
     <!-- One player ship, by ID CODE — the join key the bridge and MD share. Three
          cues need this exact scan (adopt, abandon, watch), so it lives here once.
 
@@ -2488,7 +2517,7 @@
              this line, the game is on an old script — load a save (or restart X4).
              This is the ONLY place the build is written; it is deliberately in
              Twitch_Say so no message can ever be emitted without it. -->
-        <set_value name="$Build" exact="'b26-rankwatch'"/>
+        <set_value name="$Build" exact="'b27-escortlib'"/>
         <set_value name="$msg" exact="event.param + ' [' + $Build + ']'"/>
         <!-- Trailing '\n' frames the line for the bridge's newline-delimited reader.
              X4's pipe write does NOT add one (verified live 2026-06-09: the probe saw
