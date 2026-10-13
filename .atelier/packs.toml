@@ -153,13 +153,13 @@ X4 is ONE resource for the machine (r2): the board leases @x4 to the session hol
 #ingame ticket ([resources.x4] in the board file), so a second one is not served until it
 ends, and x4_run.py's machine lock (every board, every checkout) refuses a second run naming
 the holder. Launch ONLY through `py.exe bridge/tools/x4_run.py run [--expect REGEX]`: it
-refuses unless Simon has marked himself away (tools/x4-away.cmd), deploys, starts X4
-minimized and silent, waits for the line in <PROFILE>/agent_x4.txt, and always kills X4.
+refuses unless Simon has marked himself away (tools/x4-away.cmd), deploys, starts X4_nonsteam.exe
+silent (x4 r11: no Steam; NOT minimized, it takes a monitor; <PROFILE> is its own Documents/Egosoft/X4 root, never Simon's), waits for the line in <PROFILE>/agent_x4.txt, and always kills X4.
 A sibling checkout deploys its own extension under the same lock with `--deploy-extra DIR`
 (repeatable; `--dry-run` lists the copy without lock, gate or launch).
 This path is a shim (x4 r2) over ../X4_Mods/tools/x4_run.py, which holds the code and runs
 no deploy.ps1 of its own: call this one when the Twitch mod must be in the game too.
-Run `x4_run.py status` first. When it says NO (Simon not away, X4 running, Steam off), do not
+Run `x4_run.py status` first. When it says NO (Simon not away, X4 running, NoSteam exe missing or not X4.exe's version), do not
 loop: note "retry when Simon is marked away" and `atelier release` the ticket, or hand back
 the recipe (the save to load, the chat command, the line chat or x4debug.txt must show).
 """
