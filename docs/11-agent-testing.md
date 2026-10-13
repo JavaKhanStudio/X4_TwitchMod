@@ -49,12 +49,18 @@ Verified on this machine from the strings in `<X4>\X4.exe` (2026-10-12):
 
 So a run from start to finish is feasible:
 
-1. The agent runs `deploy.ps1`, then starts `X4.exe -skipintro -disablesound
-   -nocputhrottle -debug all -logfile agent.txt` through `powershell.exe`. Steam must be
-   running. One X4 at a time: it cannot run while Simon plays.
+1. The agent runs `deploy.ps1`, then starts `X4_nonsteam.exe -skipintro -disablesound
+   -nocputhrottle -debug all -logfile agent.txt` (`../X4_Mods/tools/x4_run.py`, since
+   x4 r11). It is Egosoft's NoSteam executable: no Steam client, and our flags apply
+   (Steam relaunches a directly started `X4.exe` with Simon's own launch options). Its
+   profile is `<HOME>\Documents\Egosoft\X4\`, the root, not the `<id>` folder, so a
+   run never touches Simon's saves or config. Simon unzips it next to `X4.exe` from
+   egosoft.com/download/x4/bonus_en.php, and again after each X4 patch: one zip per game
+   version. The gate refuses when the exe is missing or its FileVersion is not
+   `X4.exe`'s. One X4 at a time: it cannot run while Simon plays.
 2. A debug-only Lua hook in our mod, at the start menu, calls `NewGame("<test gamestart>")`
    or `LoadGame("<save>")`. It must be told to by something the agent can set before the
-   launch. Lua has no file I/O, so that is a user-data key in `<PROFILE>` (unverified), or
+   launch. Lua has no file I/O, so that is a user-data key in the NoSteam profile above (unverified), or
    a keystroke. Either way it TOUCHES THE PROFILE FOLDER.
 3. The game is up. The MD opens the pipe, and the companion (`--source stdin`, driven by
    the agent) sends viewer commands. The agent reads the replies, `agent.txt` and the
@@ -64,11 +70,12 @@ So a run from start to finish is feasible:
 What tier 1 cannot avoid on Windows: **a real window on Simon's GPU and screen.** There
 is no headless mode. Under Windows, the cage recipe in /run-offscreen does not apply.
 What could hide the window, cheapest first:
-- Launch it minimized, while Simon is away. It still takes the GPU, and Steam shows him
-  "playing".
+- Launch it while Simon is away. X4 ignores a minimized start (12 Oct 2026: full
+  screen on the left monitor), and it takes the GPU; being marked away is the only cover.
+  The NoSteam exe shows nothing on Steam.
 - A second Windows virtual desktop. It needs a third-party CLI; nothing built in.
 - A second Windows user signed in through RDP loopback, or a VM with GPU partitioning.
-  Both are hours of setup and own a Steam session.
+  Both are hours of setup.
 
 ## Recommendation
 
